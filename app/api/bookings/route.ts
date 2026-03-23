@@ -16,10 +16,12 @@ export async function POST(request: NextRequest) {
     const supabase = createSupabaseServerClient();
     const requestedAt = new Date(`${payload.preferredDate}T${payload.preferredTime}:00`).toISOString();
 
+    const phoneEq = `"${payload.phone.replace(/"/g, "")}"`;
+    const emailEq = `"${payload.email.replace(/"/g, "")}"`;
     const { data: existingClient } = await supabase
       .from("clients")
       .select("id")
-      .or(`phone.eq.${payload.phone},email.eq.${payload.email}`)
+      .or(`phone.eq.${phoneEq},email.eq.${emailEq}`)
       .limit(1)
       .maybeSingle();
 
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest) {
     const { error: appointmentError } = await supabase.from("appointments").insert({
       client_id: clientId,
       client_name: payload.name,
+      client_phone: payload.phone,
       service: payload.service,
       appointment_time: requestedAt,
       status: "Confirmed",

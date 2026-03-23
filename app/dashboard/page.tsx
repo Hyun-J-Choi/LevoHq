@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ReactNode } from "react";
-import { getBusinessDashboardData } from "@/lib/businessData";
+import { generateClaudeMessage } from "@/lib/claude";
+import { getBusinessDashboardData, getUpcomingReminderAppointments } from "@/lib/businessData";
+import SmsSendButton from "@/components/SmsSendButton";
 
 function formatDateTime(value: string | null) {
   if (!value) return "No recent visit";
@@ -24,6 +26,30 @@ function statusClasses(status: string) {
 
 export default async function DashboardPage() {
   const { clients, appointments, activity } = await getBusinessDashboardData();
+  const reminderRows = await getUpcomingReminderAppointments();
+
+  const reminders = await Promise.all(
+    reminderRows.map(async (appt) => {
+      const when = formatDateTime(appt.appointment_time);
+      try {
+        const text = await generateClaudeMessage(
+          `Write a premium appointment reminder SMS for a beauty/wellness client.
+Client: ${appt.client_name}
+Service: ${appt.service}
+Appointment: ${when}
+Status: ${appt.status}
+
+Keep under 50 words. Warm, concise, include time and one line on parking/arrival if generic. Single SMS, no markdown.`
+        );
+        return { ...appt, reminderText: text };
+      } catch {
+        return {
+          ...appt,
+          reminderText: `Hi ${appt.client_name.split(" ")[0]}, reminder: your ${appt.service} is coming up at ${when}. Reply if you need to reschedule.`,
+        };
+      }
+    })
+  );
 
   const revenueEstimate = appointments.length * 1650;
   const showRate = appointments.length > 0 ? Math.round((appointments.filter((a) => a.status !== "Cancelled").length / appointments.length) * 100) : 0;
@@ -48,6 +74,9 @@ export default async function DashboardPage() {
             </Link>
             <Link href="/reactivation" className="rounded-xl border border-[#1E1E2A] bg-[#111118] px-4 py-2 text-[#F5F2E8] hover:border-[#D4A853]/60">
               Reactivation
+            </Link>
+            <Link href="/missed-call" className="rounded-xl border border-[#1E1E2A] bg-[#111118] px-4 py-2 text-[#F5F2E8] hover:border-[#D4A853]/60">
+              Missed Calls
             </Link>
           </div>
         </div>
@@ -92,6 +121,34 @@ export default async function DashboardPage() {
             </div>
           </Panel>
         </section>
+
+        <Panel title="Appointment reminders (next 24 hours)">
+          <p className="mb-4 text-xs text-zinc-500">AI-drafted SMS reminders ready to send via Twilio.</p>
+          <div className="space-y-4">
+            {reminders.length === 0 ? (
+              <p className="text-sm text-zinc-500">No appointments in the next 24 hours.</p>
+            ) : (
+              reminders.map((r) => (
+                <div key={r.id} className="rounded-xl border border-[#1E1E2A] bg-[#0E0E14] p-4">
+                  <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-[#F5F2E8]">{r.client_name}</p>
+                      <p className="text-xs text-zinc-400">{r.service}</p>
+                      <p className="text-xs text-zinc-500">{formatDateTime(r.appointment_time)}</p>
+                      {r.client_phone ? <p className="text-xs text-zinc-500">{r.client_phone}</p> : null}
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] ${statusClasses(r.status)}`}>{r.status}</span>
+                  </div>
+                  <div className="rounded-lg border border-[#D4A853]/25 bg-[#D4A853]/5 p-3">
+                    <p className="text-xs uppercase tracking-[0.12em] text-[#D4A853]">Suggested SMS</p>
+                    <p className="mt-1 text-sm text-[#F5F2E8]">{r.reminderText}</p>
+                    <SmsSendButton phone={r.client_phone} body={r.reminderText} />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Panel>
 
         <Panel title="What LevoHQ Is Doing Right Now">
           <div className="space-y-3">

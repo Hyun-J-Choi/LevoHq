@@ -32,9 +32,27 @@ export interface WaitlistRow {
 export interface CancellationRow {
   id: string;
   client_name: string;
+  client_phone: string | null;
   service: string;
   appointment_time: string;
   reason: string | null;
+}
+
+export interface MissedCallRow {
+  id: string;
+  from_phone: string;
+  to_phone: string | null;
+  client_name: string | null;
+  created_at: string;
+}
+
+export interface ReminderAppointmentRow {
+  id: string;
+  client_name: string;
+  client_phone: string | null;
+  service: string;
+  appointment_time: string;
+  status: string;
 }
 
 export interface FollowUpRow {
@@ -77,8 +95,39 @@ const fallbackWaitlist: WaitlistRow[] = [
 ];
 
 const fallbackCancellations: CancellationRow[] = [
-  { id: "x1", client_name: "Naomi Brooks", service: "Signature Facial", appointment_time: new Date().toISOString(), reason: "Travel conflict" },
-  { id: "x2", client_name: "Lena Wu", service: "Chemical Peel", appointment_time: new Date(Date.now() - 3600000).toISOString(), reason: "Feeling unwell" },
+  {
+    id: "x1",
+    client_name: "Naomi Brooks",
+    client_phone: "+13105550111",
+    service: "Signature Facial",
+    appointment_time: new Date().toISOString(),
+    reason: "Travel conflict",
+  },
+  {
+    id: "x2",
+    client_name: "Lena Wu",
+    client_phone: "+18185550120",
+    service: "Chemical Peel",
+    appointment_time: new Date(Date.now() - 3600000).toISOString(),
+    reason: "Feeling unwell",
+  },
+];
+
+const fallbackMissedCalls: MissedCallRow[] = [
+  {
+    id: "m1",
+    from_phone: "+13235550988",
+    to_phone: "+14245550001",
+    client_name: "Alex Rivera",
+    created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+  },
+  {
+    id: "m2",
+    from_phone: "+12135550444",
+    to_phone: "+14245550001",
+    client_name: null,
+    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+  },
 ];
 
 const fallbackFollowUps: FollowUpRow[] = [
@@ -134,14 +183,89 @@ export async function getBusinessDashboardData() {
 export async function getCancellationsData() {
   const supabase = createSupabaseServerClient();
   const [{ data: cancellations }, { data: waitlist }] = await Promise.all([
-    supabase.from("appointments").select("id,client_name,service,appointment_time,reason").eq("status", "Cancelled").order("appointment_time", { ascending: false }).limit(12),
+    supabase
+      .from("appointments")
+      .select("id,client_name,client_phone,service,appointment_time,reason")
+      .eq("status", "Cancelled")
+      .order("appointment_time", { ascending: false })
+      .limit(12),
     supabase.from("waitlist").select("id,name,phone,requested_service").order("created_at", { ascending: false }).limit(8),
   ]);
 
+  const normalized =
+    cancellations?.map((row) => ({
+      id: String(row.id),
+      client_name: String(row.client_name ?? "Client"),
+      client_phone: row.client_phone != null ? String(row.client_phone) : null,
+      service: String(row.service ?? ""),
+      appointment_time: String(row.appointment_time),
+      reason: row.reason != null ? String(row.reason) : null,
+    })) ?? null;
+
   return {
-    cancellations: (cancellations as CancellationRow[] | null) ?? fallbackCancellations,
+    cancellations: normalized ?? fallbackCancellations,
     waitlist: (waitlist as WaitlistRow[] | null) ?? fallbackWaitlist,
   };
+}
+
+export async function getMissedCallsData() {
+  const supabase = createSupabaseServerClient();
+  const { data } = await supabase
+    .from("missed_calls")
+    .select("id,from_phone,to_phone,client_name,created_at")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (!data || data.length === 0) return fallbackMissedCalls;
+
+  return data.map((row) => ({
+    id: String(row.id),
+    from_phone: String(row.from_phone),
+    to_phone: row.to_phone != null ? String(row.to_phone) : null,
+    client_name: row.client_name != null ? String(row.client_name) : null,
+    created_at: String(row.created_at),
+  })) as MissedCallRow[];
+}
+
+/** Appointments starting within the next 24 hours (non-cancelled). */
+export async function getUpcomingReminderAppointments(): Promise<ReminderAppointmentRow[]> {
+  const supabase = createSupabaseServerClient();
+  const now = new Date();
+  const until = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  const { data } = await supabase
+    .from("appointments")
+    .select("id,client_name,client_phone,service,appointment_time,status")
+    .gte("appointment_time", now.toISOString())
+    .lte("appointment_time", until.toISOString())
+    .neq("status", "Cancelled")
+    .order("appointment_time", { ascending: true })
+    .limit(15);
+
+  if (data && data.length > 0) {
+    return data.map((row) => ({
+      id: String(row.id),
+      client_name: String(row.client_name ?? "Client"),
+      client_phone: row.client_phone != null ? String(row.client_phone) : null,
+      service: String(row.service ?? "Service"),
+      appointment_time: String(row.appointment_time),
+      status: String(row.status ?? "Confirmed"),
+    }));
+  }
+
+  return fallbackAppointments
+    .filter((a) => {
+      const t = new Date(a.appointment_time).getTime();
+      return t >= now.getTime() && t <= until.getTime();
+    })
+    .map((a) => ({
+      id: a.id,
+      client_name: a.client_name,
+      client_phone: "(310) 555-0179",
+      service: a.service,
+      appointment_time: a.appointment_time,
+      status: a.status,
+    }));
 }
 
 export async function getFollowUpData() {

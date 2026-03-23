@@ -42,6 +42,7 @@ export default async function CancellationsPage() {
                     </div>
                     <RecoveryMessageButton
                       clientName={item.client_name}
+                      clientPhone={item.client_phone}
                       service={item.service}
                       appointmentTime={item.appointment_time}
                       reason={item.reason}
