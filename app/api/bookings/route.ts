@@ -10,23 +10,53 @@ export async function POST(request: NextRequest) {
       phone: string;
       email?: string;
       service: string;
-      preferredDate: string;
-      preferredTime: string;
+      /** ISO 8601 from client (local wall time encoded as instant). */
+      preferredDateTime?: string;
+      clientTimeZone?: string;
+      preferredDate?: string;
+      preferredTime?: string;
     };
 
     const name = typeof payload.name === "string" ? payload.name.trim() : "";
     const rawPhone = typeof payload.phone === "string" ? payload.phone.trim() : "";
     const phone = normalizeToE164(rawPhone) ?? rawPhone;
     const service = typeof payload.service === "string" ? payload.service.trim() : "";
+    const preferredDateTimeRaw =
+      typeof payload.preferredDateTime === "string" ? payload.preferredDateTime.trim() : "";
     const preferredDate = typeof payload.preferredDate === "string" ? payload.preferredDate.trim() : "";
     const preferredTime = typeof payload.preferredTime === "string" ? payload.preferredTime.trim() : "";
+    const clientTimeZone =
+      typeof payload.clientTimeZone === "string" && payload.clientTimeZone.trim()
+        ? payload.clientTimeZone.trim()
+        : undefined;
 
-    if (!name || !phone || !service || !preferredDate || !preferredTime) {
+    if (!name || !phone || !service) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const supabase = createSupabaseServerClient();
-    const requestedAt = new Date(`${preferredDate}T${preferredTime}:00`).toISOString();
+    let requestedAt: string;
+    let timeForSms: string;
+
+    if (preferredDateTimeRaw) {
+      const dt = new Date(preferredDateTimeRaw);
+      if (Number.isNaN(dt.getTime())) {
+        return NextResponse.json({ error: "Invalid preferredDateTime" }, { status: 400 });
+      }
+      requestedAt = dt.toISOString();
+      timeForSms = clientTimeZone
+        ? dt.toLocaleString("en-US", { dateStyle: "long", timeStyle: "short", timeZone: clientTimeZone })
+        : dt.toLocaleString("en-US", { dateStyle: "long", timeStyle: "short" });
+    } else if (preferredDate && preferredTime) {
+      const dt = new Date(`${preferredDate}T${preferredTime}:00`);
+      if (Number.isNaN(dt.getTime())) {
+        return NextResponse.json({ error: "Invalid date or time" }, { status: 400 });
+      }
+      requestedAt = dt.toISOString();
+      timeForSms = `${preferredDate} at ${preferredTime}`;
+    } else {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
 
     const { data: existingClient } = await supabase.from("clients").select("id").eq("phone", phone).maybeSingle();
 
@@ -77,7 +107,7 @@ export async function POST(request: NextRequest) {
       `Write a personalized premium appointment confirmation SMS.
 Client: ${name}
 Service: ${service}
-Time: ${preferredDate} at ${preferredTime}
+Time: ${timeForSms}
 
 Requirements:
 - Keep it under 60 words.

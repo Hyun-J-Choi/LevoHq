@@ -5,6 +5,22 @@ import { normalizeToE164 } from "@/lib/phone";
 
 const services = ["Botox", "Filler", "Microneedling", "Facial", "Consultation"] as const;
 
+/** 30-minute slots from 8:00 AM through 8:00 PM (values are 24h HH:mm). */
+const PREFERRED_TIME_OPTIONS: { value: string; label: string }[] = (() => {
+  const out: { value: string; label: string }[] = [];
+  for (let h = 8; h <= 20; h++) {
+    const minutes = h === 20 ? [0] : [0, 30];
+    for (const minute of minutes) {
+      const hour12 = h % 12 === 0 ? 12 : h % 12;
+      const period = h < 12 ? "AM" : "PM";
+      const label = `${hour12}:${minute.toString().padStart(2, "0")} ${period}`;
+      const value = `${h.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+      out.push({ value, label });
+    }
+  }
+  return out;
+})();
+
 interface BookingPayload {
   name: string;
   phone: string;
@@ -34,10 +50,25 @@ export default function BookForm() {
     setSmsNote("");
 
     try {
+      const [y, mo, d] = form.preferredDate.split("-").map(Number);
+      const [hh, mm] = form.preferredTime.split(":").map(Number);
+      const localPreferred = new Date(y, mo - 1, d, hh, mm, 0, 0);
+      if (Number.isNaN(localPreferred.getTime())) {
+        throw new Error("Invalid date or time");
+      }
+      const preferredDateTime = localPreferred.toISOString();
+      const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       const response = await fetch("/api/bookings", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          name: form.name,
+          phone: form.phone,
+          service: form.service,
+          preferredDateTime,
+          clientTimeZone,
+        }),
       });
 
       const json = (await response.json()) as { ok?: boolean; message?: string; error?: string };
@@ -112,7 +143,22 @@ export default function BookForm() {
           </select>
         </label>
         <Field label="Preferred date" type="date" value={form.preferredDate} onChange={(value) => setForm({ ...form, preferredDate: value })} />
-        <Field label="Preferred time" type="time" value={form.preferredTime} onChange={(value) => setForm({ ...form, preferredTime: value })} />
+        <label className="space-y-1">
+          <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">Preferred time</span>
+          <select
+            required
+            value={form.preferredTime}
+            onChange={(event) => setForm({ ...form, preferredTime: event.target.value })}
+            className="w-full rounded-xl border border-[#1E1E2A] bg-[#0E0E14] px-3 py-2 text-sm text-[#F5F2E8] outline-none focus:border-[#D4A853]/70"
+          >
+            <option value="">Select a time</option>
+            {PREFERRED_TIME_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <button
