@@ -5,29 +5,47 @@ import { normalizeToE164 } from "@/lib/phone";
 
 const services = ["Botox", "Filler", "Microneedling", "Facial", "Consultation"] as const;
 
-/** `min` for `<input type="datetime-local">`: start of today in the user's local calendar. */
-function minDatetimeLocalToday(): string {
-  const n = new Date();
-  const y = n.getFullYear();
-  const m = String(n.getMonth() + 1).padStart(2, "0");
-  const d = String(n.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}T00:00`;
+function getNextDays(count: number): { value: string; label: string }[] {
+  const days = [];
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  for (let i = 1; i <= count; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const label = `${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`;
+    days.push({ value: `${y}-${m}-${day}`, label });
+  }
+  return days;
 }
 
-interface BookingPayload {
-  name: string;
-  phone: string;
-  service: string;
-  /** `datetime-local` value (`YYYY-MM-DDTHH:mm`). */
-  preferredDateTime: string;
+function getTimeSlots(): { value: string; label: string }[] {
+  const slots = [];
+  for (let h = 9; h <= 19; h++) {
+    for (const min of [0, 30]) {
+      if (h === 19 && min === 30) continue;
+      const hh = String(h).padStart(2, "0");
+      const mm = String(min).padStart(2, "0");
+      const period = h < 12 ? "AM" : "PM";
+      const displayH = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      slots.push({ value: `${hh}:${mm}`, label: `${displayH}:${mm} ${period}` });
+    }
+  }
+  return slots;
 }
+
+const DATE_OPTIONS = getNextDays(14);
+const TIME_OPTIONS = getTimeSlots();
 
 export default function BookForm() {
-  const [form, setForm] = useState<BookingPayload>({
+  const [form, setForm] = useState({
     name: "",
     phone: "",
     service: services[0],
-    preferredDateTime: "",
+    preferredDate: "",
+    preferredTime: "",
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,13 +60,12 @@ export default function BookForm() {
     setSmsNote("");
 
     try {
-      const raw = form.preferredDateTime.trim();
-      if (!raw) {
-        throw new Error("Please choose a preferred date and time.");
+      if (!form.preferredDate || !form.preferredTime) {
+        throw new Error("Please select a date and time.");
       }
-      const localPreferred = new Date(raw);
+      const localPreferred = new Date(`${form.preferredDate}T${form.preferredTime}:00`);
       if (Number.isNaN(localPreferred.getTime())) {
-        throw new Error("Invalid date or time");
+        throw new Error("Invalid date or time.");
       }
       const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -98,7 +115,8 @@ export default function BookForm() {
         name: "",
         phone: "",
         service: services[0],
-        preferredDateTime: "",
+        preferredDate: "",
+        preferredTime: "",
       });
     } catch (err) {
       console.error(err);
@@ -134,17 +152,31 @@ export default function BookForm() {
             ))}
           </select>
         </label>
-        <label className="space-y-1 md:col-span-2">
-          <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">Preferred Date &amp; Time</span>
-          <input
-            name="preferredDateTime"
-            type="datetime-local"
-            required
-            min={minDatetimeLocalToday()}
-            value={form.preferredDateTime}
-            onChange={(event) => setForm({ ...form, preferredDateTime: event.target.value })}
+        <label className="space-y-1">
+          <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">Preferred Date</span>
+          <select
+            value={form.preferredDate}
+            onChange={(e) => setForm({ ...form, preferredDate: e.target.value })}
             className="w-full rounded-xl border border-[#1E1E2A] bg-[#0E0E14] px-3 py-2 text-sm text-[#F5F2E8] outline-none focus:border-[#D4A853]/70"
-          />
+          >
+            <option value="">Select a date</option>
+            {DATE_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">Preferred Time</span>
+          <select
+            value={form.preferredTime}
+            onChange={(e) => setForm({ ...form, preferredTime: e.target.value })}
+            className="w-full rounded-xl border border-[#1E1E2A] bg-[#0E0E14] px-3 py-2 text-sm text-[#F5F2E8] outline-none focus:border-[#D4A853]/70"
+          >
+            <option value="">Select a time</option>
+            {TIME_OPTIONS.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
         </label>
       </div>
 
