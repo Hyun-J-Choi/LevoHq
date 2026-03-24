@@ -1,14 +1,32 @@
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
+/**
+ * Cookie-based Supabase client for server components and API routes.
+ * Respects RLS policies based on the authenticated user.
+ */
 export function createSupabaseServerClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const cookieStore = cookies();
 
-  if (!url || !anonKey) {
-    throw new Error("Supabase env vars are missing");
-  }
-
-  return createClient(url, anonKey, {
-    auth: { persistSession: false },
-  });
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // setAll can fail in Server Components (read-only cookies).
+            // This is fine — the middleware handles session refresh.
+          }
+        },
+      },
+    }
+  );
 }

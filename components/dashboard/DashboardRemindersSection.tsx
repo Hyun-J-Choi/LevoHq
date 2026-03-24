@@ -4,7 +4,7 @@ import SmsSendButton from "@/components/SmsSendButton";
 import { ReactNode } from "react";
 
 function formatDateTime(value: string | null) {
-  if (!value) return "—";
+  if (!value) return "-";
   return new Date(value).toLocaleString([], {
     month: "short",
     day: "numeric",
@@ -18,27 +18,30 @@ function statusClasses(status: string) {
   if (s.includes("active") || s.includes("confirmed") || s.includes("completed")) {
     return "bg-emerald-500/10 text-emerald-300 border border-emerald-400/25";
   }
-  if (s.includes("progress") || s.includes("pending")) {
+  if (s.includes("progress") || s.includes("pending") || s.includes("scheduled")) {
     return "bg-amber-500/10 text-amber-300 border border-amber-400/25";
   }
   return "bg-zinc-500/10 text-zinc-300 border border-zinc-400/25";
 }
 
-export default async function DashboardRemindersSection() {
-  const reminderRows = await getUpcomingReminderAppointments();
+export default async function DashboardRemindersSection({
+  businessId,
+}: {
+  businessId: string;
+}) {
+  const reminderRows = await getUpcomingReminderAppointments(businessId);
 
   const reminders = await Promise.all(
     reminderRows.map(async (appt) => {
-      const when = formatDateTime(appt.appointment_time);
+      const when = formatDateTime(appt.scheduled_at);
       try {
         const text = await generateClaudeMessage(
           `Write a premium appointment reminder SMS for a beauty/wellness client.
 Client: ${appt.client_name}
 Service: ${appt.service}
 Appointment: ${when}
-Status: ${appt.status}
 
-Keep under 50 words. Warm, concise, include time and one line on parking/arrival if generic. Single SMS, no markdown.`
+Keep under 50 words. Warm, concise, include time. Single SMS, no markdown.`
         );
         return { ...appt, reminderText: text };
       } catch {
@@ -63,10 +66,12 @@ Keep under 50 words. Warm, concise, include time and one line on parking/arrival
                 <div>
                   <p className="text-sm font-semibold text-[#F5F2E8]">{r.client_name}</p>
                   <p className="text-xs text-zinc-400">{r.service}</p>
-                  <p className="text-xs text-zinc-500">{formatDateTime(r.appointment_time)}</p>
-                  {r.client_phone ? <p className="text-xs text-zinc-500">{r.client_phone}</p> : null}
+                  <p className="text-xs text-zinc-500">{formatDateTime(r.scheduled_at)}</p>
+                  {r.client_phone && <p className="text-xs text-zinc-500">{r.client_phone}</p>}
                 </div>
-                <span className={`rounded-full px-2.5 py-1 text-[11px] ${statusClasses(r.status)}`}>{r.status}</span>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] ${statusClasses(r.status)}`}>
+                  {r.status}
+                </span>
               </div>
               <div className="rounded-lg border border-[#D4A853]/25 bg-[#D4A853]/5 p-3">
                 <p className="text-xs uppercase tracking-[0.12em] text-[#D4A853]">Suggested SMS</p>

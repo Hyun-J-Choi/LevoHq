@@ -1,84 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { firstName, postTwilioSend, unauthorizedCron } from "@/lib/cron-send";
-import { normalizeToE164 } from "@/lib/phone";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { sendCompliantSMS } from "@/lib/twilio";
+import { generateClaudeMessage } from "@/lib/claude";
+import { getBusinessSystemPrompt } from "@/lib/businessContext";
+import { createLogger, genRequestId } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 export const maxDuration = 60;
 
-/**
- * GET /api/cron/reminders
- * Vercel Cron: hourly. Appointments 23–25h from now, confirmed, not yet reminded.
- */
 export async function GET(request: NextRequest) {
-  const denied = unauthorizedCron(request);
-  if (denied) return denied;
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const log = createLogger({ requestId: genRequestId() });
+  const admin = createSupabaseAdmin();
+  let sent = 0;
 
   const now = Date.now();
   const lower = new Date(now + 23 * 60 * 60 * 1000).toISOString();
   const upper = new Date(now + 25 * 60 * 60 * 1000).toISOString();
 
-  const supabase = createSupabaseServerClient();
-
-  const { data: rows, error } = await supabase
+  const { data: appointments, error } = await admin
     .from("appointments")
-    .select("id, client_name, client_phone, service, appointment_time, status")
-    .gte("appointment_time", lower)
-    .lte("appointment_time", upper)
+    .select("id, business_id, client_name, client_phone, service, scheduled_at, status")
+    .gte("scheduled_at", lower)
+    .lte("scheduled_at", upper)
     .is("reminder_sent_at", null)
-    .ilike("status", "confirmed");
+    .in("status", ["scheduled", "confirmed"]);
 
   if (error) {
-    console.error("[cron/reminders] query error:", error);
+    log.error("Reminders query failed", { error: error.message });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const appointments = rows ?? [];
-  const results: { id: string; ok: boolean; detail?: string }[] = [];
-
-  for (const row of appointments) {
-    const id = String(row.id);
-    const name = String(row.client_name ?? "Client");
-    const rawPhone = row.client_phone != null ? String(row.client_phone) : "";
-    const to = normalizeToE164(rawPhone) ?? rawPhone.trim();
-    const service = String(row.service ?? "your appointment");
-    const apptTime = new Date(String(row.appointment_time));
-
-    if (!to || !to.startsWith("+")) {
-      results.push({ id, ok: false, detail: "missing_or_invalid_phone" });
-      continue;
-    }
-
-    const timeLabel = apptTime.toLocaleString("en-US", {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
-    const body = `Hi ${firstName(name)}, this is a reminder from the studio: your ${service} appointment is tomorrow (${timeLabel}). Reply if you need to reschedule.`;
+  for (const appt of appointments ?? []) {
+    if (!appt.client_phone) continue;
 
     try {
-      await postTwilioSend(to, body);
-      const { error: upErr } = await supabase.from("appointments").update({ reminder_sent_at: new Date().toISOString() }).eq("id", id);
-      if (upErr) {
-        console.error("[cron/reminders] reminder_sent_at update:", upErr);
-        results.push({ id, ok: true, detail: "sent_but_flag_not_saved" });
-      } else {
-        results.push({ id, ok: true });
+      const systemPrompt = await getBusinessSystemPrompt(appt.business_id);
+      const message = await generateClaudeMessage(
+        `Write a friendly appointment reminder SMS.
+Client: ${appt.client_name ?? "there"}
+Service: ${appt.service}
+Time: ${new Date(appt.scheduled_at).toLocaleString("en-US", { weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+
+Keep under 250 characters. Include CTA to reply if they need to reschedule.`,
+        systemPrompt
+      );
+
+      const result = await sendCompliantSMS(appt.client_phone, message, appt.business_id);
+
+      if (result.sent) {
+        await admin.from("appointments").update({ reminder_sent_at: new Date().toISOString() }).eq("id", appt.id);
+        sent++;
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "send_failed";
-      console.error("[cron/reminders] send failed", id, msg);
-      results.push({ id, ok: false, detail: msg });
+    } catch (err) {
+      log.error("Reminder send failed", { appointmentId: appt.id, error: String(err) });
     }
   }
 
-  return NextResponse.json({
-    window: { lower, upper },
-    count: appointments.length,
-    results,
-  });
+  log.info("Reminders cron complete", { scanned: appointments?.length ?? 0, sent });
+  return NextResponse.json({ scanned: appointments?.length ?? 0, sent });
 }

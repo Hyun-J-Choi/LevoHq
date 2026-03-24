@@ -1,16 +1,10 @@
 {
   "crons": [
-    {
-      "path": "/api/cron/reminders",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/followup",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/reactivation",
-      "schedule": "0 14 * * *"
-    }
+    { "path": "/api/cron/reminders", "schedule": "0 */2 * * *" },
+    { "path": "/api/cron/followup", "schedule": "0 */4 * * *" },
+    { "path": "/api/cron/reactivation", "schedule": "0 9 * * 1" },
+    { "path": "/api/cron/nurture", "schedule": "0 10 * * *" },
+    { "path": "/api/cron/treatment-reminders", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/birthday", "schedule": "0 8 * * *" }
   ]
 }

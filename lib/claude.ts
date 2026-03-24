@@ -2,7 +2,7 @@ interface ClaudeTextResponse {
   content?: Array<{ type: string; text?: string }>;
 }
 
-export async function generateClaudeMessage(prompt: string): Promise<string> {
+export async function generateClaudeMessage(prompt: string, systemPrompt?: string): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -16,9 +16,10 @@ export async function generateClaudeMessage(prompt: string): Promise<string> {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-latest",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 300,
       temperature: 0.7,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
       messages: [{ role: "user", content: prompt }],
     }),
   });

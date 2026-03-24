@@ -40,7 +40,13 @@ const DATE_OPTIONS = getNextDays(14);
 const TIME_OPTIONS = getTimeSlots();
 
 export default function BookForm() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    phone: string;
+    service: string;
+    preferredDate: string;
+    preferredTime: string;
+  }>({
     name: "",
     phone: "",
     service: services[0],

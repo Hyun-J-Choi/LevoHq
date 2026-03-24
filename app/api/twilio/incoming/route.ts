@@ -1,25 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClaudeMessage } from "@/lib/claude";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  getTwilioClient,
   getTwilioEnv,
   getTwilioWebhookUrl,
   twilioFormToParams,
   validateTwilioSignature,
+  sendCompliantSMS,
 } from "@/lib/twilio";
+import {
+  detectKeyword,
+  recordOptOut,
+  recordOptIn,
+  recordConsent,
+} from "@/lib/sms-compliance";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const EMPTY_TWIML = `<?xml version="1.0" encoding="UTF-8"?><Response></Response>`;
 
+function twimlResponse() {
+  return new NextResponse(EMPTY_TWIML, {
+    status: 200,
+    headers: { "Content-Type": "text/xml; charset=utf-8" },
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const params = await twilioFormToParams(request);
-    const { authToken, fromNumber } = getTwilioEnv();
+    const { authToken } = getTwilioEnv();
 
-    const skipValidation = process.env.TWILIO_SKIP_SIGNATURE_VALIDATION === "true";
+    // Validate Twilio signature
+    const skipValidation =
+      process.env.TWILIO_SKIP_SIGNATURE_VALIDATION === "true";
     if (!skipValidation) {
       const signature = request.headers.get("x-twilio-signature");
       const url = getTwilioWebhookUrl(request);
@@ -37,39 +53,81 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing From/To" }, { status: 400 });
     }
 
-    const supabase = createSupabaseServerClient();
+    // Rate limit inbound: 60/min per phone
+    if (!checkRateLimit(`inbound:${from}`, 60)) {
+      return twimlResponse();
+    }
 
-    const { error: inboundError } = await supabase.from("conversations").insert({
+    const admin = createSupabaseAdmin();
+
+    // Look up business by Twilio number
+    const { data: business } = await admin
+      .from("businesses")
+      .select("id, name, timezone")
+      .eq("twilio_number", to)
+      .single();
+
+    if (!business) {
+      console.error("[incoming] No business found for number:", to);
+      return twimlResponse();
+    }
+
+    const businessId = business.id;
+
+    // Log inbound message
+    await admin.from("conversations").insert({
+      business_id: businessId,
       twilio_message_sid: messageSid,
       direction: "inbound",
       from_phone: from,
       to_phone: to,
-      body,
+      message: body,
     });
 
-    if (inboundError) {
-      console.error("Supabase insert inbound:", inboundError);
+    // TCPA keyword handling (STOP/START/HELP)
+    const keyword = detectKeyword(body);
+    if (keyword) {
+      if (keyword.type === "stop") {
+        await recordOptOut(from, businessId);
+      } else if (keyword.type === "start") {
+        await recordOptIn(from, businessId);
+      }
+
+      // Send keyword response (skip consent check for compliance responses)
+      await sendCompliantSMS(from, keyword.response, businessId, {
+        timezone: business.timezone ?? undefined,
+        skipConsent: true,
+      });
+
+      return twimlResponse();
     }
 
-    const safePhone = from.replace(/"/g, "");
-    const phoneEq = `"${safePhone}"`;
-    const { data: recent } = await supabase
+    // Auto-record consent for inbound messages (they texted us first)
+    await recordConsent(from, businessId, "opt_in_sms");
+
+    // Fetch recent conversation history for context
+    const { data: recent } = await admin
       .from("conversations")
-      .select("direction, body, created_at")
-      .or(`from_phone.eq.${phoneEq},to_phone.eq.${phoneEq}`)
-      .order("created_at", { ascending: false })
+      .select("direction, message, sent_at")
+      .eq("business_id", businessId)
+      .or(`from_phone.eq.${from},to_phone.eq.${from}`)
+      .order("sent_at", { ascending: false })
       .limit(10);
 
     const history =
       recent
         ?.reverse()
-        .map((row) => `${row.direction === "inbound" ? "Client" : "LevoHQ"}: ${row.body}`)
+        .map(
+          (row) =>
+            `${row.direction === "inbound" ? "Client" : business.name ?? "Studio"}: ${row.message}`
+        )
         .join("\n") ?? "";
 
+    // Generate AI reply
     let reply: string;
     try {
       reply = await generateClaudeMessage(
-        `You are LevoHQ, the SMS assistant for a premium beauty and wellness studio.
+        `You are ${business.name ?? "the studio"}'s SMS assistant.
 Keep replies concise for SMS: aim under 280 characters when possible, never over 500 characters.
 Tone: warm, professional, luxurious but not stiff.
 
@@ -87,34 +145,14 @@ Reply as a single SMS message only — no quotes, no markdown.`
         "Thanks for your message — our team will get back to you shortly. Reply BOOK anytime to schedule.";
     }
 
-    const client = getTwilioClient();
-    const sent = await client.messages.create({
-      from: fromNumber,
-      to: from,
-      body: reply,
+    // Send reply with compliance checks
+    await sendCompliantSMS(from, reply, businessId, {
+      timezone: business.timezone ?? undefined,
     });
 
-    const { error: outboundError } = await supabase.from("conversations").insert({
-      twilio_message_sid: sent.sid,
-      direction: "outbound",
-      from_phone: fromNumber,
-      to_phone: from,
-      body: reply,
-    });
-
-    if (outboundError) {
-      console.error("Supabase insert outbound:", outboundError);
-    }
-
-    return new NextResponse(EMPTY_TWIML, {
-      status: 200,
-      headers: { "Content-Type": "text/xml; charset=utf-8" },
-    });
+    return twimlResponse();
   } catch (err) {
     console.error("Twilio incoming webhook error:", err);
-    return new NextResponse(EMPTY_TWIML, {
-      status: 200,
-      headers: { "Content-Type": "text/xml; charset=utf-8" },
-    });
+    return twimlResponse();
   }
 }

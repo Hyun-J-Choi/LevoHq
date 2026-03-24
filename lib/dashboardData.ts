@@ -1,23 +1,22 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const REVENUE_PER_COMPLETED_USD = 150;
-
 export interface TodayAppointmentRow {
   id: string;
   client_name: string;
   service: string;
-  appointment_time: string;
+  scheduled_at: string;
   status: string;
+  service_price: number;
 }
 
 export interface ConversationActivityRow {
   id: string;
   detail: string;
-  created_at: string;
+  sent_at: string;
 }
 
 function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
 function addUtcDays(d: Date, days: number): Date {
@@ -28,21 +27,14 @@ function addUtcDays(d: Date, days: number): Date {
 
 function truncate(s: string, max: number): string {
   const t = s.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
+  return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
 /**
- * Real dashboard metrics and lists (no demo fallbacks).
+ * Dashboard metrics scoped to a specific business.
+ * Uses the cookie-based client so RLS filters by business_id.
  */
-export async function getDashboardSnapshot(): Promise<{
-  todayAppointments: TodayAppointmentRow[];
-  activeClientsCount: number;
-  revenueMtdUsd: number;
-  completedMtdCount: number;
-  activity: ConversationActivityRow[];
-  errors: string[];
-}> {
+export async function getDashboardSnapshot(businessId: string) {
   const supabase = createSupabaseServerClient();
   const errors: string[] = [];
   const now = new Date();
@@ -52,59 +44,73 @@ export async function getDashboardSnapshot(): Promise<{
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-  const [
-    todayRes,
-    activeRes,
-    completedRes,
-    convoRes,
-  ] = await Promise.all([
-    supabase
-      .from("appointments")
-      .select("id, client_name, service, appointment_time, status")
-      .gte("appointment_time", dayStart.toISOString())
-      .lt("appointment_time", dayEnd.toISOString())
-      .order("appointment_time", { ascending: true }),
-    supabase.from("clients").select("id", { count: "exact", head: true }).ilike("status", "active"),
-    supabase
-      .from("appointments")
-      .select("id", { count: "exact", head: true })
-      .gte("appointment_time", monthStart.toISOString())
-      .lt("appointment_time", nextMonthStart.toISOString())
-      .ilike("status", "completed"),
-    supabase
-      .from("conversations")
-      .select("id, direction, message, sent_at")
-      .order("sent_at", { ascending: false })
-      .limit(12),
-  ]);
+  const [todayRes, activeRes, completedRes, revenueRes, convoRes] =
+    await Promise.all([
+      supabase
+        .from("appointments")
+        .select("id, client_name, service, scheduled_at, status, service_price")
+        .eq("business_id", businessId)
+        .gte("scheduled_at", dayStart.toISOString())
+        .lt("scheduled_at", dayEnd.toISOString())
+        .order("scheduled_at", { ascending: true }),
+      supabase
+        .from("clients")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .ilike("status", "active"),
+      supabase
+        .from("appointments")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", businessId)
+        .gte("scheduled_at", monthStart.toISOString())
+        .lt("scheduled_at", nextMonthStart.toISOString())
+        .ilike("status", "completed"),
+      supabase
+        .from("appointments")
+        .select("service_price")
+        .eq("business_id", businessId)
+        .gte("scheduled_at", monthStart.toISOString())
+        .lt("scheduled_at", nextMonthStart.toISOString())
+        .ilike("status", "completed"),
+      supabase
+        .from("conversations")
+        .select("id, direction, message, sent_at")
+        .eq("business_id", businessId)
+        .order("sent_at", { ascending: false })
+        .limit(12),
+    ]);
 
   if (todayRes.error) errors.push(`today appointments: ${todayRes.error.message}`);
   if (activeRes.error) errors.push(`active clients: ${activeRes.error.message}`);
   if (completedRes.error) errors.push(`completed MTD: ${completedRes.error.message}`);
+  if (revenueRes.error) errors.push(`revenue MTD: ${revenueRes.error.message}`);
   if (convoRes.error) errors.push(`conversations: ${convoRes.error.message}`);
 
-  const todayAppointments: TodayAppointmentRow[] = (todayRes.data ?? []).map((r) => ({
-    id: String(r.id),
-    client_name: String(r.client_name ?? "Client"),
-    service: String(r.service ?? "—"),
-    appointment_time: String(r.appointment_time),
-    status: String(r.status ?? ""),
-  }));
+  const todayAppointments: TodayAppointmentRow[] = (todayRes.data ?? []).map(
+    (r) => ({
+      id: String(r.id),
+      client_name: String(r.client_name ?? "Client"),
+      service: String(r.service ?? "-"),
+      scheduled_at: String(r.scheduled_at),
+      status: String(r.status ?? ""),
+      service_price: Number(r.service_price ?? 0),
+    })
+  );
 
   const completedMtdCount = completedRes.count ?? 0;
-  const revenueMtdUsd = completedMtdCount * REVENUE_PER_COMPLETED_USD;
+  const revenueMtdUsd = (revenueRes.data ?? []).reduce(
+    (sum, r) => sum + Number(r.service_price ?? 0),
+    0
+  );
 
   const activity: ConversationActivityRow[] = (convoRes.data ?? []).map((r) => {
     const dir = String(r.direction ?? "").toLowerCase();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const msg = truncate(String((r as any).message ?? ""), 100);
+    const msg = truncate(String(r.message ?? ""), 100);
     const label = dir === "inbound" ? "Inbound SMS" : "Outbound SMS";
-    const detail = `${label}: ${msg}`;
     return {
       id: String(r.id),
-      detail,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      created_at: String((r as any).sent_at ?? ""),
+      detail: `${label}: ${msg}`,
+      sent_at: String(r.sent_at ?? ""),
     };
   });
 

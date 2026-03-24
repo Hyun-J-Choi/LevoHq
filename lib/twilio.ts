@@ -1,5 +1,8 @@
 import twilio from "twilio";
 import type { NextRequest } from "next/server";
+import { hasConsent, isQuietHours } from "@/lib/sms-compliance";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export function getTwilioEnv() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -16,6 +19,54 @@ export function getTwilioEnv() {
 export function getTwilioClient() {
   const { accountSid, authToken } = getTwilioEnv();
   return twilio(accountSid, authToken);
+}
+
+/**
+ * Send an SMS with TCPA compliance checks.
+ * Returns { sent: true } or { sent: false, reason: string }.
+ */
+export async function sendCompliantSMS(
+  to: string,
+  body: string,
+  businessId: string,
+  options?: { timezone?: string; skipConsent?: boolean }
+): Promise<{ sent: boolean; reason?: string; sid?: string }> {
+  // Rate limit: 30 sends per minute per business
+  if (!checkRateLimit(`sms:${businessId}`, 30)) {
+    return { sent: false, reason: "rate_limited" };
+  }
+
+  // Check consent (unless explicitly skipped for keyword responses)
+  if (!options?.skipConsent) {
+    const consent = await hasConsent(to, businessId);
+    if (!consent) {
+      return { sent: false, reason: "no_consent" };
+    }
+  }
+
+  // Check quiet hours
+  const tz = options?.timezone ?? "America/Los_Angeles";
+  if (isQuietHours(tz)) {
+    return { sent: false, reason: "quiet_hours" };
+  }
+
+  // Send via Twilio
+  const { fromNumber } = getTwilioEnv();
+  const client = getTwilioClient();
+  const sent = await client.messages.create({ from: fromNumber, to, body });
+
+  // Log to conversations
+  const admin = createSupabaseAdmin();
+  await admin.from("conversations").insert({
+    business_id: businessId,
+    twilio_message_sid: sent.sid,
+    direction: "outbound",
+    from_phone: fromNumber,
+    to_phone: to,
+    message: body,
+  });
+
+  return { sent: true, sid: sent.sid };
 }
 
 /**
