@@ -5,28 +5,21 @@ import { normalizeToE164 } from "@/lib/phone";
 
 const services = ["Botox", "Filler", "Microneedling", "Facial", "Consultation"] as const;
 
-/** 30-minute slots from 8:00 AM through 8:00 PM (values are 24h HH:mm). */
-const PREFERRED_TIME_OPTIONS: { value: string; label: string }[] = (() => {
-  const out: { value: string; label: string }[] = [];
-  for (let h = 8; h <= 20; h++) {
-    const minutes = h === 20 ? [0] : [0, 30];
-    for (const minute of minutes) {
-      const hour12 = h % 12 === 0 ? 12 : h % 12;
-      const period = h < 12 ? "AM" : "PM";
-      const label = `${hour12}:${minute.toString().padStart(2, "0")} ${period}`;
-      const value = `${h.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-      out.push({ value, label });
-    }
-  }
-  return out;
-})();
+/** `min` for `<input type="datetime-local">`: start of today in the user's local calendar. */
+function minDatetimeLocalToday(): string {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, "0");
+  const d = String(n.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}T00:00`;
+}
 
 interface BookingPayload {
   name: string;
   phone: string;
   service: string;
-  preferredDate: string;
-  preferredTime: string;
+  /** `datetime-local` value (`YYYY-MM-DDTHH:mm`). */
+  preferredDateTime: string;
 }
 
 export default function BookForm() {
@@ -34,8 +27,7 @@ export default function BookForm() {
     name: "",
     phone: "",
     service: services[0],
-    preferredDate: "",
-    preferredTime: "",
+    preferredDateTime: "",
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -50,13 +42,14 @@ export default function BookForm() {
     setSmsNote("");
 
     try {
-      const [y, mo, d] = form.preferredDate.split("-").map(Number);
-      const [hh, mm] = form.preferredTime.split(":").map(Number);
-      const localPreferred = new Date(y, mo - 1, d, hh, mm, 0, 0);
+      const raw = form.preferredDateTime.trim();
+      if (!raw) {
+        throw new Error("Please choose a preferred date and time.");
+      }
+      const localPreferred = new Date(raw);
       if (Number.isNaN(localPreferred.getTime())) {
         throw new Error("Invalid date or time");
       }
-      const preferredDateTime = localPreferred.toISOString();
       const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       const response = await fetch("/api/bookings", {
@@ -66,7 +59,7 @@ export default function BookForm() {
           name: form.name,
           phone: form.phone,
           service: form.service,
-          preferredDateTime,
+          preferredDateTime: localPreferred.toISOString(),
           clientTimeZone,
         }),
       });
@@ -105,8 +98,7 @@ export default function BookForm() {
         name: "",
         phone: "",
         service: services[0],
-        preferredDate: "",
-        preferredTime: "",
+        preferredDateTime: "",
       });
     } catch (err) {
       console.error(err);
@@ -142,22 +134,17 @@ export default function BookForm() {
             ))}
           </select>
         </label>
-        <Field label="Preferred date" type="date" value={form.preferredDate} onChange={(value) => setForm({ ...form, preferredDate: value })} />
-        <label className="space-y-1">
-          <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">Preferred time</span>
-          <select
+        <label className="space-y-1 md:col-span-2">
+          <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">Preferred Date &amp; Time</span>
+          <input
+            name="preferredDateTime"
+            type="datetime-local"
             required
-            value={form.preferredTime}
-            onChange={(event) => setForm({ ...form, preferredTime: event.target.value })}
+            min={minDatetimeLocalToday()}
+            value={form.preferredDateTime}
+            onChange={(event) => setForm({ ...form, preferredDateTime: event.target.value })}
             className="w-full rounded-xl border border-[#1E1E2A] bg-[#0E0E14] px-3 py-2 text-sm text-[#F5F2E8] outline-none focus:border-[#D4A853]/70"
-          >
-            <option value="">Select a time</option>
-            {PREFERRED_TIME_OPTIONS.map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          />
         </label>
       </div>
 
@@ -194,6 +181,7 @@ function Field({
   type = "text",
   placeholder,
   autoComplete,
+  required = true,
 }: {
   label: string;
   value: string;
@@ -201,12 +189,13 @@ function Field({
   type?: string;
   placeholder?: string;
   autoComplete?: string;
+  required?: boolean;
 }) {
   return (
     <label className="space-y-1">
       <span className="text-xs uppercase tracking-[0.14em] text-zinc-400">{label}</span>
       <input
-        required
+        required={required}
         type={type}
         value={value}
         placeholder={placeholder}
