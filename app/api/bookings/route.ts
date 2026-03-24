@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClaudeMessage } from "@/lib/claude";
+import { normalizeToE164 } from "@/lib/phone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -7,35 +8,42 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as {
       name: string;
       phone: string;
-      email: string;
+      email?: string;
       service: string;
       preferredDate: string;
       preferredTime: string;
     };
 
-    const supabase = createSupabaseServerClient();
-    const requestedAt = new Date(`${payload.preferredDate}T${payload.preferredTime}:00`).toISOString();
+    const name = typeof payload.name === "string" ? payload.name.trim() : "";
+    const rawPhone = typeof payload.phone === "string" ? payload.phone.trim() : "";
+    const phone = normalizeToE164(rawPhone) ?? rawPhone;
+    const service = typeof payload.service === "string" ? payload.service.trim() : "";
+    const preferredDate = typeof payload.preferredDate === "string" ? payload.preferredDate.trim() : "";
+    const preferredTime = typeof payload.preferredTime === "string" ? payload.preferredTime.trim() : "";
 
-    const phoneEq = `"${payload.phone.replace(/"/g, "")}"`;
-    const emailEq = `"${payload.email.replace(/"/g, "")}"`;
-    const { data: existingClient } = await supabase
-      .from("clients")
-      .select("id")
-      .or(`phone.eq.${phoneEq},email.eq.${emailEq}`)
-      .limit(1)
-      .maybeSingle();
+    if (!name || !phone || !service || !preferredDate || !preferredTime) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const supabase = createSupabaseServerClient();
+    const requestedAt = new Date(`${preferredDate}T${preferredTime}:00`).toISOString();
+
+    const { data: existingClient } = await supabase.from("clients").select("id").eq("phone", phone).maybeSingle();
 
     let clientId = existingClient?.id;
 
     if (!clientId) {
+      const email = typeof payload.email === "string" && payload.email.trim() ? payload.email.trim() : null;
+      const insertRow: Record<string, string | null> = {
+        name,
+        phone,
+        status: "Active",
+      };
+      if (email) insertRow.email = email;
+
       const { data: insertedClient, error: clientInsertError } = await supabase
         .from("clients")
-        .insert({
-          name: payload.name,
-          phone: payload.phone,
-          email: payload.email,
-          status: "Active",
-        })
+        .insert(insertRow)
         .select("id")
         .single();
 
@@ -45,21 +53,18 @@ export async function POST(request: NextRequest) {
 
       clientId = insertedClient.id;
     } else {
-      await supabase
-        .from("clients")
-        .update({
-          name: payload.name,
-          phone: payload.phone,
-          email: payload.email,
-        })
-        .eq("id", clientId);
+      const updateRow: Record<string, string> = { name, phone };
+      if (typeof payload.email === "string" && payload.email.trim()) {
+        updateRow.email = payload.email.trim();
+      }
+      await supabase.from("clients").update(updateRow).eq("id", clientId);
     }
 
     const { error: appointmentError } = await supabase.from("appointments").insert({
       client_id: clientId,
-      client_name: payload.name,
-      client_phone: payload.phone,
-      service: payload.service,
+      client_name: name,
+      client_phone: phone,
+      service,
       appointment_time: requestedAt,
       status: "Confirmed",
     });
@@ -70,9 +75,9 @@ export async function POST(request: NextRequest) {
 
     const message = await generateClaudeMessage(
       `Write a personalized premium appointment confirmation SMS.
-Client: ${payload.name}
-Service: ${payload.service}
-Time: ${payload.preferredDate} at ${payload.preferredTime}
+Client: ${name}
+Service: ${service}
+Time: ${preferredDate} at ${preferredTime}
 
 Requirements:
 - Keep it under 60 words.
