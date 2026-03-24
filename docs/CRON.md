@@ -70,3 +70,35 @@ Run: `supabase/migrations/006_appointments_followup_review.sql`
 curl -s "http://localhost:3000/api/cron/followup" \
   -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
+
+---
+
+## Reactivation (60-day win-back)
+
+### Route
+
+`GET /api/cron/reactivation` — **daily** at **14:00 UTC** (`0 14 * * *` in `vercel.json`).
+
+For each **`clients`** row where **`reactivation_sent_at` is null**:
+
+1. **Last visit** = most recent **non-cancelled** `appointments.appointment_time` for that `client_id`.
+2. Last visit must fall in the **60-day window**: between **61 and 60 days ago** (UTC), so the daily job picks each client once.
+3. **No future** non-cancelled appointments for that client.
+4. Sends (via **`POST /api/twilio/send`**):  
+   *Hi [name], it's been a while since your last visit at [business name]. We'd love to see you again — reply YES to get priority booking.*
+5. Sets **`clients.reactivation_sent_at`**.
+
+### Supabase
+
+Run: `supabase/migrations/007_clients_reactivation_sent_at.sql`
+
+### Env
+
+- **`BUSINESS_DISPLAY_NAME`** or **`NEXT_PUBLIC_BUSINESS_DISPLAY_NAME`** — inserted as “[business name]” (default: `our studio`).
+
+### Local test
+
+```bash
+curl -s "http://localhost:3000/api/cron/reactivation" \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
