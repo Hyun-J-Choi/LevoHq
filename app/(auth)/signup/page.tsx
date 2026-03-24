@@ -13,12 +13,13 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createSupabaseBrowserClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
+    const supabase = createSupabaseBrowserClient();
 
     // 1. Create auth user
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
@@ -32,30 +33,31 @@ export default function SignupPage() {
       return;
     }
 
-    // 2. Create business
-    const { data: business, error: bizError } = await supabase
-      .from("businesses")
-      .insert({ name: businessName, owner_name: ownerName, email })
-      .select("id")
-      .single();
+    // 2. Create business + link via SECURITY DEFINER function (works even without session)
+    const { error: bizError } = await supabase.rpc("signup_create_business", {
+      p_user_id: authData.user.id,
+      p_name: businessName,
+      p_owner_name: ownerName,
+      p_email: email,
+    });
 
-    if (bizError || !business) {
-      setError("Account created but business setup failed. Please contact support.");
+    if (bizError) {
+      setError("Account created but business setup failed: " + bizError.message);
       setLoading(false);
       return;
     }
 
-    // 3. Link user to business
-    const { error: linkError } = await supabase.from("business_users").insert({
-      user_id: authData.user.id,
-      business_id: business.id,
-      role: "owner",
-    });
-
-    if (linkError) {
-      setError("Account created but business link failed. Please contact support.");
-      setLoading(false);
-      return;
+    // 3. If signUp didn't auto-sign-in (email confirmation), sign in now
+    if (!authData.session) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) {
+        // Account + business exist, but login failed — send to login page
+        router.push("/login");
+        return;
+      }
     }
 
     router.push("/onboarding");
