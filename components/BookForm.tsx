@@ -23,9 +23,9 @@ function getNextDays(count: number): { value: string; label: string }[] {
 
 function getTimeSlots(): { value: string; label: string }[] {
   const slots = [];
-  for (let h = 9; h <= 19; h++) {
+  for (let h = 10; h <= 18; h++) {
     for (const min of [0, 30]) {
-      if (h === 19 && min === 30) continue;
+      if (h === 18 && min === 30) continue;
       const hh = String(h).padStart(2, "0");
       const mm = String(min).padStart(2, "0");
       const period = h < 12 ? "AM" : "PM";
