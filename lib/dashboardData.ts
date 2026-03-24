@@ -73,8 +73,8 @@ export async function getDashboardSnapshot(): Promise<{
       .ilike("status", "completed"),
     supabase
       .from("conversations")
-      .select("id, direction, from_phone, to_phone, body, created_at")
-      .order("created_at", { ascending: false })
+      .select("id, direction, message, sent_at")
+      .order("sent_at", { ascending: false })
       .limit(12),
   ]);
 
@@ -96,14 +96,15 @@ export async function getDashboardSnapshot(): Promise<{
 
   const activity: ConversationActivityRow[] = (convoRes.data ?? []).map((r) => {
     const dir = String(r.direction ?? "").toLowerCase();
-    const body = truncate(String(r.body ?? ""), 100);
-    const peer = dir === "inbound" ? String(r.from_phone ?? "") : String(r.to_phone ?? "");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msg = truncate(String((r as any).message ?? ""), 100);
     const label = dir === "inbound" ? "Inbound SMS" : "Outbound SMS";
-    const detail = peer ? `${label} · ${peer}: ${body}` : `${label}: ${body}`;
+    const detail = `${label}: ${msg}`;
     return {
       id: String(r.id),
       detail,
-      created_at: String(r.created_at),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      created_at: String((r as any).sent_at ?? ""),
     };
   });
 

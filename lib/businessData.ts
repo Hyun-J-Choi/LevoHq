@@ -18,7 +18,7 @@ export interface AppointmentRow {
 
 export interface ActivityRow {
   id: string;
-  detail: string;
+  message: string;
   created_at: string;
 }
 
@@ -84,9 +84,9 @@ const fallbackAppointments: AppointmentRow[] = [
 ];
 
 const fallbackActivity: ActivityRow[] = [
-  { id: "l1", detail: "AI sent reminder to Sophie Kim for today at 2:00 PM.", created_at: new Date().toISOString() },
-  { id: "l2", detail: "AI detected opening at 4:30 PM and notified waitlist.", created_at: new Date(Date.now() - 600000).toISOString() },
-  { id: "l3", detail: "AI drafted post-visit follow-up for Maya Patel.", created_at: new Date(Date.now() - 1200000).toISOString() },
+  { id: "l1", message: "AI sent reminder to Sophie Kim for today at 2:00 PM.", created_at: new Date().toISOString() },
+  { id: "l2", message: "AI detected opening at 4:30 PM and notified waitlist.", created_at: new Date(Date.now() - 600000).toISOString() },
+  { id: "l3", message: "AI drafted post-visit follow-up for Maya Patel.", created_at: new Date(Date.now() - 1200000).toISOString() },
 ];
 
 const fallbackWaitlist: WaitlistRow[] = [
@@ -170,7 +170,7 @@ export async function getBusinessDashboardData() {
   const [{ data: clients }, { data: appointments }, { data: activity }] = await Promise.all([
     supabase.from("clients").select("id,name,phone,last_visit,status").order("last_visit", { ascending: false }).limit(6),
     supabase.from("appointments").select("id,client_name,service,appointment_time,status").gte("appointment_time", new Date().toISOString().split("T")[0]).order("appointment_time", { ascending: true }).limit(6),
-    supabase.from("activity_logs").select("id,detail,created_at").order("created_at", { ascending: false }).limit(8),
+    supabase.from("activity_logs").select("id,message,created_at").order("created_at", { ascending: false }).limit(8),
   ]);
 
   return {
