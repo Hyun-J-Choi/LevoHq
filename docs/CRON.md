@@ -31,3 +31,42 @@ curl -s "http://localhost:3000/api/cron/reminders" \
 ```
 
 If `CRON_SECRET` is unset locally, the route allows unauthenticated access (dev only — set the secret in production).
+
+---
+
+## Post-visit follow-up & Google review
+
+### Route
+
+`GET /api/cron/followup` (hourly in `vercel.json`)
+
+**Phase 1 — thank you (~2h after visit)**  
+- `appointment_time` between **3h and 2h ago** (hourly window)  
+- `status` **completed** (case-insensitive)  
+- `follow_up_sent_at` **null**  
+- SMS: *Hi [name], thanks for visiting today! How was your experience?*  
+- Sets **`follow_up_sent_at`**
+
+**Phase 2 — review (24h+ after phase 1)**  
+- `follow_up_sent_at` ≤ **now − 24h**  
+- `review_request_sent_at` **null**  
+- `review_suppression_reason` **null**  
+- `status` **completed**  
+- If the client has **another non-cancelled appointment** after this visit’s time → set **`review_suppression_reason = 'rebooked'`** (no SMS)  
+- Else SMS: *If you loved your visit, we'd appreciate a quick review: [link]*  
+- Sets **`review_request_sent_at`**
+
+### Supabase
+
+Run: `supabase/migrations/006_appointments_followup_review.sql`
+
+### Env
+
+- **`GOOGLE_BUSINESS_REVIEW_URL`** — your real review link (defaults to a placeholder URL if unset)
+
+### Local test
+
+```bash
+curl -s "http://localhost:3000/api/cron/followup" \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```

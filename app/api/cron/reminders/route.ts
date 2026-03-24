@@ -1,58 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { firstName, postTwilioSend, unauthorizedCron } from "@/lib/cron-send";
 import { normalizeToE164 } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-function getCronBaseUrl(): string | null {
-  const explicit = process.env.CRON_INTERNAL_BASE_URL?.replace(/\/$/, "");
-  if (explicit) return explicit;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  const site = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (site) return site;
-  return null;
-}
-
-async function postTwilioSend(to: string, body: string): Promise<void> {
-  const base = getCronBaseUrl();
-  if (!base) {
-    throw new Error("Set CRON_INTERNAL_BASE_URL, VERCEL_URL, or NEXT_PUBLIC_SITE_URL for cron → Twilio");
-  }
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  const secret = process.env.TWILIO_SEND_SECRET;
-  if (secret) headers["x-twilio-send-secret"] = secret;
-
-  const res = await fetch(`${base}/api/twilio/send`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ to, body }),
-  });
-
-  if (!res.ok) {
-    const j = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(j.error ?? `Twilio send HTTP ${res.status}`);
-  }
-}
-
-function firstName(full: string): string {
-  return full.trim().split(/\s+/)[0] || "there";
-}
-
 /**
  * GET /api/cron/reminders
  * Vercel Cron: hourly. Appointments 23–25h from now, confirmed, not yet reminded.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const denied = unauthorizedCron(request);
+  if (denied) return denied;
 
   const now = Date.now();
   const lower = new Date(now + 23 * 60 * 60 * 1000).toISOString();
