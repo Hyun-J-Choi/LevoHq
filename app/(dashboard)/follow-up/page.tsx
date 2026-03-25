@@ -1,6 +1,7 @@
 import { generateClaudeMessage } from "@/lib/claude";
 import { getFollowUpData } from "@/lib/businessData";
 import FollowUpSentiment from "@/components/FollowUpSentiment";
+import SendSMSButton from "@/components/SendSMSButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentBusinessId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -67,7 +68,10 @@ Keep under 60 words. Sound warm and personalized. Ask one simple question about 
             </div>
 
             <p className="rounded-lg border border-[#D4A853]/30 bg-[#D4A853]/10 p-4 text-sm text-white">{entry.message}</p>
-            <FollowUpSentiment clientName={entry.client_name} service={entry.service} />
+            <div className="flex items-center gap-4">
+              <SendSMSButton phone={entry.phone} message={entry.message} label="Send Follow-Up" />
+              <FollowUpSentiment clientName={entry.client_name} service={entry.service} />
+            </div>
           </article>
         ))}
       </section>

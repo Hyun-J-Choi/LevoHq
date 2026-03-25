@@ -8,20 +8,32 @@ export default async function ConversationsPage() {
   const businessId = await getCurrentBusinessId(supabase);
   if (!businessId) redirect("/login");
 
-  const { data: messages } = await supabase
-    .from("conversations")
-    .select("id, direction, from_phone, to_phone, message, sent_at")
-    .eq("business_id", businessId)
-    .order("sent_at", { ascending: false })
-    .limit(500);
+  const [{ data: messages }, { data: clientRows }] = await Promise.all([
+    supabase
+      .from("conversations")
+      .select("id, direction, from_phone, to_phone, message, sent_at")
+      .eq("business_id", businessId)
+      .order("sent_at", { ascending: false })
+      .limit(500),
+    supabase
+      .from("clients")
+      .select("name, phone")
+      .eq("business_id", businessId),
+  ]);
+
+  // Build phone → name lookup
+  const phoneToName = new Map<string, string>();
+  for (const c of clientRows ?? []) {
+    if (c.phone) phoneToName.set(c.phone, c.name);
+  }
 
   // Group by contact phone
-  const contacts = new Map<string, { phone: string; lastMessage: string; lastAt: string; count: number }>();
+  const contacts = new Map<string, { phone: string; name: string | null; lastMessage: string; lastAt: string; count: number }>();
   for (const m of messages ?? []) {
     const phone = m.direction === "inbound" ? m.from_phone : m.to_phone;
     if (!phone) continue;
     if (!contacts.has(phone)) {
-      contacts.set(phone, { phone, lastMessage: m.message, lastAt: m.sent_at, count: 1 });
+      contacts.set(phone, { phone, name: phoneToName.get(phone) ?? null, lastMessage: m.message, lastAt: m.sent_at, count: 1 });
     } else {
       contacts.get(phone)!.count++;
     }
@@ -45,7 +57,8 @@ export default async function ConversationsPage() {
             <Link key={c.phone} href={`/conversations/${encodeURIComponent(c.phone)}`}
               className="block rounded-lg border border-white/[0.04] bg-white/[0.01] p-3 hover:border-[#D4A853]/30 transition">
               <div className="flex justify-between items-start">
-                <p className="text-sm font-medium text-white">{c.phone}</p>
+                <p className="text-sm font-medium text-white">{c.name ?? c.phone}</p>
+                {c.name && <p className="text-[11px] text-neutral-500">{c.phone}</p>}
                 <span className="text-[11px] text-neutral-600">{c.count} msgs</span>
               </div>
               <p className="mt-1 text-xs text-neutral-500 truncate">{c.lastMessage}</p>

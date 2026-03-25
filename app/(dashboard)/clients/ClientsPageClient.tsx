@@ -28,7 +28,19 @@ export default function ClientsPageClient({
 }) {
   const [showImport, setShowImport] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+  const [search, setSearch] = useState("");
   const router = useRouter();
+
+  const filtered = search.trim()
+    ? clients.filter((c) => {
+        const q = search.toLowerCase();
+        return (
+          c.name?.toLowerCase().includes(q) ||
+          c.phone?.toLowerCase().includes(q) ||
+          c.email?.toLowerCase().includes(q)
+        );
+      })
+    : clients;
 
   function handleImportDone(count: number) {
     setShowImport(false);
@@ -51,6 +63,14 @@ export default function ClientsPageClient({
         </button>
       </div>
 
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by name, phone, or email..."
+        className="w-full rounded-lg border border-white/[0.1] bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-neutral-500 outline-none transition focus:border-[#D4A853]/50 focus:ring-1 focus:ring-[#D4A853]/30"
+      />
+
       {successMsg && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
           {successMsg}
@@ -70,11 +90,11 @@ export default function ClientsPageClient({
             </tr>
           </thead>
           <tbody>
-            {clients.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-neutral-500">No clients yet. Import a CSV to get started.</td></tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-neutral-500">{search ? "No matching clients." : "No clients yet. Import a CSV to get started."}</td></tr>
             )}
-            {clients.map((c) => (
-              <tr key={c.id} className="border-b border-white/[0.04] text-neutral-300">
+            {filtered.map((c) => (
+              <tr key={c.id} className="border-b border-white/[0.04] text-neutral-300 hover:bg-white/[0.02] transition cursor-pointer" onClick={() => router.push(`/clients/${c.id}`)}>
                 <td className="px-5 py-3 font-medium text-white">{c.name}</td>
                 <td className="px-5 py-3">{c.phone ?? "\u2014"}</td>
                 <td className="px-5 py-3">{c.email ?? "\u2014"}</td>

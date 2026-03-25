@@ -1,5 +1,6 @@
 import { generateClaudeMessage } from "@/lib/claude";
 import { getMissedCallsData } from "@/lib/businessData";
+import SendSMSButton from "@/components/SendSMSButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentBusinessId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -70,6 +71,7 @@ Requirements:
               <p className="text-xs uppercase tracking-[0.14em] text-[#D4A853]">Suggested reply</p>
               <p className="mt-2 text-sm text-white">{call.autoReply}</p>
             </div>
+            <SendSMSButton phone={call.from_phone} message={call.autoReply} label="Send Reply" />
           </article>
         ))}
       </section>

@@ -1,5 +1,6 @@
 import { generateClaudeMessage } from "@/lib/claude";
 import { getReactivationData } from "@/lib/businessData";
+import SendSMSButton from "@/components/SendSMSButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentBusinessId } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -64,6 +65,7 @@ Include a limited-time rebooking incentive and a direct CTA.`
             </div>
 
             <p className="rounded-lg border border-[#D4A853]/35 bg-[#D4A853]/10 p-4 text-sm text-white">{entry.message}</p>
+            <SendSMSButton phone={entry.phone} message={entry.message} label="Send Win-Back" />
           </article>
         ))}
       </section>

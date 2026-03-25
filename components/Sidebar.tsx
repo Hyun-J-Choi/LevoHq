@@ -3,20 +3,47 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "grid" },
-  { href: "/appointments", label: "Appointments", icon: "calendar" },
-  { href: "/clients", label: "Clients", icon: "users" },
-  { href: "/conversations", label: "Conversations", icon: "chat" },
-  { href: "/cancellations", label: "Recovery", icon: "refresh" },
-  { href: "/follow-up", label: "Follow-Up", icon: "heart" },
-  { href: "/reactivation", label: "Reactivation", icon: "sparkle" },
-  { href: "/missed-call", label: "Missed Calls", icon: "phone" },
-  { href: "/waitlist", label: "Waitlist", icon: "list" },
-  { href: "/memberships", label: "Memberships", icon: "card" },
-  { href: "/referrals", label: "Referrals", icon: "gift" },
-  { href: "/analytics", label: "Analytics", icon: "chart" },
-  { href: "/settings", label: "Settings", icon: "gear" },
+interface NavItem { href: string; label: string; icon: string }
+interface NavGroup { title: string; items: NavItem[] }
+
+const navGroups: NavGroup[] = [
+  {
+    title: "Overview",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: "grid" },
+      { href: "/appointments", label: "Appointments", icon: "calendar" },
+      { href: "/clients", label: "Clients", icon: "users" },
+    ],
+  },
+  {
+    title: "Messaging",
+    items: [
+      { href: "/conversations", label: "Conversations", icon: "chat" },
+      { href: "/missed-call", label: "Missed Calls", icon: "phone" },
+    ],
+  },
+  {
+    title: "Retention",
+    items: [
+      { href: "/cancellations", label: "Recovery", icon: "refresh" },
+      { href: "/follow-up", label: "Follow-Up", icon: "heart" },
+      { href: "/reactivation", label: "Reactivation", icon: "sparkle" },
+    ],
+  },
+  {
+    title: "Growth",
+    items: [
+      { href: "/waitlist", label: "Waitlist", icon: "list" },
+      { href: "/memberships", label: "Memberships", icon: "card" },
+      { href: "/referrals", label: "Referrals", icon: "gift" },
+    ],
+  },
+  {
+    title: "Insights",
+    items: [
+      { href: "/analytics", label: "Analytics", icon: "chart" },
+    ],
+  },
 ];
 
 const icons: Record<string, string> = {
@@ -39,13 +66,7 @@ function NavIcon({ name }: { name: string }) {
   const d = icons[name];
   if (!d) return null;
   return (
-    <svg
-      className="h-4 w-4 shrink-0"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={1.5}
-    >
+    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d={d} />
     </svg>
   );
@@ -57,40 +78,58 @@ export default function Sidebar({ businessName }: { businessName?: string }) {
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-white/[0.06] bg-[#08080C]">
       <div className="flex h-14 items-center border-b border-white/[0.06] px-5">
-        <span className="text-[15px] font-semibold tracking-tight text-white">
-          LevoHQ
-        </span>
+        <span className="text-[15px] font-semibold tracking-tight text-white">LevoHQ</span>
       </div>
 
       {businessName && (
         <div className="border-b border-white/[0.06] px-5 py-3">
-          <p className="truncate text-xs font-medium text-[#D4A853]">
-            {businessName}
-          </p>
+          <p className="truncate text-xs font-medium text-[#D4A853]">{businessName}</p>
         </div>
       )}
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <ul className="space-y-0.5">
-          {navItems.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition ${
-                    active
-                      ? "bg-[#D4A853]/10 text-[#D4A853]"
-                      : "text-neutral-400 hover:bg-white/[0.04] hover:text-white"
-                  }`}
-                >
-                  <NavIcon name={item.icon} />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      <nav className="flex-1 overflow-y-auto px-3 py-2">
+        {navGroups.map((group) => (
+          <div key={group.title} className="mb-1">
+            <p className="px-3 pt-4 pb-1.5 text-[10px] uppercase tracking-[0.2em] text-neutral-600">
+              {group.title}
+            </p>
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(item.href + "/");
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition ${
+                        active
+                          ? "bg-[#D4A853]/10 text-[#D4A853]"
+                          : "text-neutral-400 hover:bg-white/[0.04] hover:text-white"
+                      }`}
+                    >
+                      <NavIcon name={item.icon} />
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+
+        {/* Settings pinned at bottom */}
+        <div className="mt-auto border-t border-white/[0.04] pt-2 mt-4">
+          <Link
+            href="/settings"
+            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition ${
+              pathname === "/settings"
+                ? "bg-[#D4A853]/10 text-[#D4A853]"
+                : "text-neutral-400 hover:bg-white/[0.04] hover:text-white"
+            }`}
+          >
+            <NavIcon name="gear" />
+            Settings
+          </Link>
+        </div>
       </nav>
     </aside>
   );
