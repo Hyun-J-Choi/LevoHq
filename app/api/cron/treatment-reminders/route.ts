@@ -20,25 +20,30 @@ export async function GET(request: NextRequest) {
     .select("id, business_id, service, interval_days, reminder_template");
 
   for (const protocol of protocols ?? []) {
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() - protocol.interval_days);
-    const dayStart = new Date(targetDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(targetDate);
-    dayEnd.setHours(23, 59, 59, 999);
+    // Find the most recent completed appointment per client for this service
+    // that is overdue (past interval) and hasn't been followed up yet.
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - protocol.interval_days);
 
     const { data: appointments } = await admin
       .from("appointments")
-      .select("id, client_name, client_phone, service, business_id")
+      .select("id, client_id, client_name, client_phone, service, business_id, scheduled_at")
       .eq("business_id", protocol.business_id)
       .eq("service", protocol.service)
       .eq("status", "completed")
-      .gte("scheduled_at", dayStart.toISOString())
-      .lte("scheduled_at", dayEnd.toISOString())
+      .lte("scheduled_at", cutoffDate.toISOString())
+      .is("follow_up_sent_at", null)
+      .order("scheduled_at", { ascending: false })
       .limit(50);
+
+    // Deduplicate: only send to each client once (their most recent overdue appt)
+    const seenClients = new Set<string>();
 
     for (const appt of appointments ?? []) {
       if (!appt.client_phone) continue;
+      const clientKey = appt.client_id ?? appt.client_phone;
+      if (seenClients.has(clientKey)) continue;
+      seenClients.add(clientKey);
 
       try {
         const systemPrompt = await getBusinessSystemPrompt(protocol.business_id);
@@ -54,7 +59,14 @@ Keep under 250 characters. Suggest rebooking for their next session.`,
         );
 
         const result = await sendCompliantSMS(appt.client_phone, message, protocol.business_id);
-        if (result.sent) sent++;
+        if (result.sent) {
+          sent++;
+          // Mark this appointment so we don't re-send tomorrow
+          await admin
+            .from("appointments")
+            .update({ follow_up_sent_at: new Date().toISOString() })
+            .eq("id", appt.id);
+        }
       } catch (err) {
         log.error("Treatment reminder failed", { appointmentId: appt.id, error: String(err) });
       }

@@ -22,6 +22,26 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+// ─── Service name normalizer ─────────────────────────────────────────────────
+// Maps messy real-world service names (e.g. "Botox 20 units", "Lip Filler 1ml")
+// to the canonical protocol names used in the system.
+const SERVICE_ALIASES: Array<{ canonical: string; keywords: string[] }> = [
+  { canonical: "Botox", keywords: ["botox", "dysport", "xeomin", "jeuveau", "toxin", "botulinum", "neuromodulator"] },
+  { canonical: "Dermal Filler", keywords: ["filler", "juvederm", "restylane", "sculptra", "radiesse", "belotero", "lip filler", "cheek filler", "nasolabial", "tear trough"] },
+  { canonical: "HydraFacial", keywords: ["hydrafacial", "hydra facial", "hydra-facial"] },
+  { canonical: "Chemical Peel", keywords: ["chemical peel", "vi peel", "jessner", "glycolic peel", "lactic peel", "salicylic peel", "tca peel"] },
+  { canonical: "Microneedling", keywords: ["microneedling", "micro needling", "micro-needling", "collagen induction", "prp facial", "morpheus"] },
+  { canonical: "Laser Hair Removal", keywords: ["laser hair", "hair removal", "lhr", "ipl hair"] },
+];
+
+function normalizeService(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  for (const { canonical, keywords } of SERVICE_ALIASES) {
+    if (keywords.some((kw) => lower.includes(kw))) return canonical;
+  }
+  return raw; // keep original if no match — still imports, just won't match a protocol
+}
+
 // ─── RFC-4180 compliant CSV parser ──────────────────────────────────────────
 // Handles quoted fields, commas inside quotes, escaped quotes ("").
 function parseCSVLine(line: string): string[] {
@@ -79,10 +99,19 @@ export default function ImportCSVModal({
       h.toLowerCase().replace(/[^a-z_]/g, "")
     );
 
-    const nameIdx = header.findIndex((h) => h === "name");
-    const phoneIdx = header.findIndex((h) => h === "phone");
-    const serviceIdx = header.findIndex((h) => h === "service");
-    const dateIdx = header.findIndex((h) => h === "last_visit_date");
+    // Accept common column name variations from real clinic software (Mindbody, Vagaro, Jane App, etc.)
+    const nameIdx = header.findIndex((h) =>
+      ["name", "client_name", "full_name", "customer_name", "client", "patient_name", "guest_name", "clientname", "fullname"].includes(h)
+    );
+    const phoneIdx = header.findIndex((h) =>
+      ["phone", "mobile", "cell", "phone_number", "mobile_phone", "cell_phone", "telephone", "contact_number", "phonenumber", "mobile_number"].includes(h)
+    );
+    const serviceIdx = header.findIndex((h) =>
+      ["service", "treatment", "service_type", "procedure", "appointment_type", "service_name", "last_service", "servicename", "treatmenttype", "treatment_type", "appt_type"].includes(h)
+    );
+    const dateIdx = header.findIndex((h) =>
+      ["last_visit_date", "last_visit", "last_appointment", "appointment_date", "visit_date", "date", "last_appointment_date", "lastvisit", "lastvisitdate", "lastappointment", "appt_date"].includes(h)
+    );
 
     const missing: string[] = [];
     if (nameIdx === -1) missing.push("name");
@@ -99,7 +128,7 @@ export default function ImportCSVModal({
       const cols = parseCSVLine(lines[i]);
       const name = cols[nameIdx] || "";
       const phoneRaw = cols[phoneIdx] || "";
-      const service = cols[serviceIdx] || "";
+      const service = normalizeService(cols[serviceIdx] || "");
       const last_visit_date = cols[dateIdx] || "";
 
       if (!name || !phoneRaw) {
