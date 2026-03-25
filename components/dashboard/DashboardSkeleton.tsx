@@ -32,6 +32,24 @@ export function DashboardMainSkeleton() {
   );
 }
 
+export function DashboardPanelSkeleton() {
+  return (
+    <section className="animate-pulse rounded-2xl border border-[#1E1E2A] bg-[#111118] p-5">
+      <div className="h-7 w-48 rounded bg-zinc-700/70" />
+      <div className="mt-4 flex gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-10 w-24 rounded-lg bg-zinc-700/40" />
+        ))}
+      </div>
+      <div className="mt-4 space-y-2">
+        {Array.from({ length: 4 }).map((_, j) => (
+          <div key={j} className="h-16 rounded-xl border border-[#1E1E2A] bg-[#0E0E14]/80" />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardRemindersSkeleton() {
   return (
     <section className="animate-pulse rounded-2xl border border-[#1E1E2A] bg-[#111118] p-5">
