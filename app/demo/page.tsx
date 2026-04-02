@@ -1,5 +1,25 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
+
+type ChatRole = "user" | "assistant";
+
+type ChatMessage = {
+  role: ChatRole;
+  content: string;
+};
+
+type AnthropicContentBlock = { type: string; text?: string };
+
+type AnthropicMessagesResponse = {
+  content?: AnthropicContentBlock[];
+  error?: { message?: string };
+};
 
 const SYSTEM_PROMPT = `You are the SMS assistant for Glow Med Spa, a premium medical spa.
 
@@ -60,12 +80,12 @@ const SUGGESTED_MESSAGES = [
 ];
 
 export default function LevoDemo() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [started, setStarted] = useState(false);
-  const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -77,10 +97,10 @@ export default function LevoDemo() {
     }
   }, [started]);
 
-  const sendMessage = async (text) => {
+  const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
 
-    const userMsg = { role: "user", content: text.trim() };
+    const userMsg: ChatMessage = { role: "user", content: text.trim() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
@@ -104,23 +124,34 @@ export default function LevoDemo() {
         }),
       });
 
-      const data = await response.json();
-      const reply = data.content?.[0]?.text || "Sorry, something went wrong. Please try again!";
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-    } catch (err) {
+      const data = (await response.json()) as AnthropicMessagesResponse;
+      const reply =
+        data.content?.[0]?.text ??
+        data.error?.message ??
+        "Sorry, something went wrong. Please try again!";
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Connection error — please try again." },
+        { role: "assistant" as const, content: reply },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant" as const,
+          content: "Connection error — please try again.",
+        },
       ]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = (e) => {
+  function handleSubmit(
+    e: KeyboardEvent<HTMLInputElement> | MouseEvent<HTMLButtonElement>
+  ) {
     e.preventDefault();
     sendMessage(input);
-  };
+  }
 
   const formatTime = () => {
     const now = new Date();
@@ -286,13 +317,17 @@ export default function LevoDemo() {
                         transition: "all 0.2s",
                         fontFamily: "inherit",
                       }}
-                      onMouseOver={(e) => {
-                        e.target.style.background = "rgba(99,102,241,0.15)";
-                        e.target.style.borderColor = "rgba(99,102,241,0.4)";
+                      onMouseOver={(e: MouseEvent<HTMLButtonElement>) => {
+                        e.currentTarget.style.background =
+                          "rgba(99,102,241,0.15)";
+                        e.currentTarget.style.borderColor =
+                          "rgba(99,102,241,0.4)";
                       }}
-                      onMouseOut={(e) => {
-                        e.target.style.background = "rgba(99,102,241,0.08)";
-                        e.target.style.borderColor = "rgba(99,102,241,0.2)";
+                      onMouseOut={(e: MouseEvent<HTMLButtonElement>) => {
+                        e.currentTarget.style.background =
+                          "rgba(99,102,241,0.08)";
+                        e.currentTarget.style.borderColor =
+                          "rgba(99,102,241,0.2)";
                       }}
                     >
                       {msg}
@@ -381,7 +416,9 @@ export default function LevoDemo() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit(e)}
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === "Enter") handleSubmit(e);
+                }}
                 placeholder="Text message..."
                 style={{
                   flex: 1,
