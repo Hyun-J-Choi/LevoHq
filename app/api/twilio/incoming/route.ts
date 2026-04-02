@@ -15,6 +15,11 @@ import {
   recordConsent,
 } from "@/lib/sms-compliance";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  computeAvailabilitySlots,
+  extractServiceSearchTermFromMessage,
+  messageSuggestsAvailabilityLookup,
+} from "@/lib/availabilitySlots";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -123,6 +128,37 @@ export async function POST(request: NextRequest) {
         )
         .join("\n") ?? "";
 
+    let availabilityBlock = "";
+    const serviceSearch = extractServiceSearchTermFromMessage(body);
+    if (messageSuggestsAvailabilityLookup(body) && serviceSearch) {
+      try {
+        const avail = await computeAvailabilitySlots(admin, {
+          serviceName: serviceSearch,
+          dateParam: "this_week",
+          slotLimit: 5,
+        });
+        if (avail.ok && avail.slots.length > 0) {
+          const list = avail.slots
+            .map(
+              (s) =>
+                `${s.day} ${s.display_time} with ${s.provider_name}`
+            )
+            .join("; ");
+          availabilityBlock = `
+CURRENT AVAILABILITY for ${avail.service.name}: ${list}. Use this real data when responding — do not make up appointment times.`;
+        } else if (avail.ok) {
+          availabilityBlock = `
+CURRENT AVAILABILITY for ${avail.service.name}: (no open slots in the system for this week). Do not invent times; offer to have a team member help book or follow up.`;
+        }
+      } catch (availErr) {
+        console.error("[incoming] availability lookup failed:", availErr);
+      }
+    }
+
+    const schedulingRule = availabilityBlock
+      ? "Scheduling: When CURRENT AVAILABILITY appears below, use only those day, time, and provider options. If it lists no slots, do not invent times — offer team help."
+      : "Scheduling: NEVER invent or guess specific availability, times, or dates. If asked about scheduling without real slots below, say a team member will confirm shortly.";
+
     // Generate AI reply
     let reply: string;
     try {
@@ -132,12 +168,13 @@ Keep replies concise for SMS: aim under 280 characters, never over 500 character
 Tone: warm, professional, and caring — like a knowledgeable front desk team member.
 
 STRICT RULES — never break these:
-1. NEVER invent or guess specific availability, times, or dates. If asked about scheduling, say a team member will confirm shortly.
+1. ${schedulingRule}
 2. NEVER invent or guess specific pricing. If asked about cost, say a team member will send over the details shortly.
 3. NEVER give medical advice or make claims about treatment results.
 4. If a client seems upset or has a complaint, express empathy and say a team member will reach out shortly.
 5. You can warmly acknowledge thank-you messages, compliments, and general questions about services.
 6. Always end messages that need a human follow-up with: "A team member will be in touch shortly!"
+${availabilityBlock}
 
 Recent conversation (newest last):
 ${history || "(no prior messages)"}

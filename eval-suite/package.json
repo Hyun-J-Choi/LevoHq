@@ -1,0 +1,17 @@
+{
+  "name": "levo-eval-suite",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "LevoHQ AI chatbot evaluation and testing suite",
+  "scripts": {
+    "eval": "node run-eval.js",
+    "eval:booking": "node run-eval.js --category happy_path",
+    "eval:pricing": "node run-eval.js --category pricing",
+    "eval:edge": "node run-eval.js --category edge",
+    "eval:adversarial": "node run-eval.js --category adversarial",
+    "eval:single": "node run-eval.js --id"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0"
+  }
+}

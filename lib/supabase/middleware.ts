@@ -45,6 +45,7 @@ export async function updateSession(request: NextRequest) {
     "/api/twilio/voice-status",
     "/api/cron",
     "/api/lead",
+    "/api/availability",
   ];
 
   const isPublic = publicRoutes.some(
