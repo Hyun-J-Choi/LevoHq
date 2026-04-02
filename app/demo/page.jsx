@@ -1,3 +1,4 @@
+"use client";
 import { useState, useRef, useEffect } from "react";
 
 const SYSTEM_PROMPT = `You are the SMS assistant for Glow Med Spa, a premium medical spa.
