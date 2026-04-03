@@ -47,6 +47,7 @@ export async function updateSession(request: NextRequest) {
     "/api/cron",
     "/api/lead",
     "/api/availability",
+    "/api/demo-chat",
   ];
 
   const isPublic = publicRoutes.some(
