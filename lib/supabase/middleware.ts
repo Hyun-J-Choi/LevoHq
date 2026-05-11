@@ -41,6 +41,8 @@ export async function updateSession(request: NextRequest) {
     "/signup",
     "/book",
     "/demo",
+    "/privacy",
+    "/terms",
     "/api/auth",
     "/api/twilio/incoming",
     "/api/twilio/voice-status",
