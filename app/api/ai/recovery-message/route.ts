@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClaudeMessage } from "@/lib/claude";
 import { getBusinessSystemPrompt } from "@/lib/businessContext";
+import { cancellationRecoveryPrompt } from "@/lib/messageRecipes";
 import { createLogger, genRequestId } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
-  const log = createLogger({ requestId: genRequestId() });
+  const requestId = genRequestId();
+  const log = createLogger({ requestId });
 
   try {
     const body = (await request.json()) as {
@@ -22,20 +24,14 @@ export async function POST(request: NextRequest) {
     log.info("Generating recovery message", { businessId: body.businessId });
 
     const message = await generateClaudeMessage(
-      `Write a concise personalized SMS to recover a cancelled appointment.
-Client: ${body.clientName}
-Service: ${body.service}
-Original appointment: ${body.appointmentTime}
-Cancellation reason: ${body.reason ?? "Not specified"}
-
-Requirements:
-- Use first name if possible from the client name.
-- Mention the missed service naturally.
-- Caring, non-pushy tone matching the brand voice.
-- Include one concrete rebooking incentive.
-- Keep it under 70 words and SMS-friendly.
-- End with a direct rebooking CTA.`,
-      systemPrompt
+      cancellationRecoveryPrompt({
+        clientName: body.clientName,
+        service: body.service,
+        appointmentTime: body.appointmentTime,
+        reason: body.reason,
+      }),
+      systemPrompt,
+      { label: "cancellation_recovery", requestId }
     );
 
     return NextResponse.json({ message });

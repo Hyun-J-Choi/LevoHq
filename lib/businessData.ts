@@ -31,6 +31,7 @@ export interface MissedCallRow {
   to_phone: string | null;
   client_name: string | null;
   created_at: string;
+  suggested_reply: string | null;
 }
 
 export interface ReminderAppointmentRow {
@@ -40,6 +41,7 @@ export interface ReminderAppointmentRow {
   service: string;
   scheduled_at: string;
   status: string;
+  suggested_reminder_message: string | null;
 }
 
 export interface FollowUpRow {
@@ -48,6 +50,7 @@ export interface FollowUpRow {
   phone: string;
   service: string;
   scheduled_at: string;
+  suggested_followup_message: string | null;
 }
 
 export interface ReactivationRow {
@@ -56,6 +59,7 @@ export interface ReactivationRow {
   phone: string;
   email: string;
   last_visit: string | null;
+  suggested_reactivation_message: string | null;
 }
 
 /** All queries below are scoped to a specific business_id. */
@@ -96,7 +100,7 @@ export async function getMissedCallsData(businessId: string): Promise<MissedCall
   const supabase = createSupabaseServerClient();
   const { data } = await supabase
     .from("missed_calls")
-    .select("id, from_phone, to_phone, client_name, created_at")
+    .select("id, from_phone, to_phone, client_name, created_at, suggested_reply")
     .eq("business_id", businessId)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -107,6 +111,7 @@ export async function getMissedCallsData(businessId: string): Promise<MissedCall
     to_phone: row.to_phone != null ? String(row.to_phone) : null,
     client_name: row.client_name != null ? String(row.client_name) : null,
     created_at: String(row.created_at),
+    suggested_reply: row.suggested_reply != null ? String(row.suggested_reply) : null,
   }));
 }
 
@@ -119,7 +124,7 @@ export async function getUpcomingReminderAppointments(
 
   const { data } = await supabase
     .from("appointments")
-    .select("id, client_name, client_phone, service, scheduled_at, status")
+    .select("id, client_name, client_phone, service, scheduled_at, status, suggested_reminder_message")
     .eq("business_id", businessId)
     .gte("scheduled_at", now.toISOString())
     .lte("scheduled_at", until.toISOString())
@@ -134,6 +139,10 @@ export async function getUpcomingReminderAppointments(
     service: String(row.service ?? "Service"),
     scheduled_at: String(row.scheduled_at),
     status: String(row.status ?? "scheduled"),
+    suggested_reminder_message:
+      row.suggested_reminder_message != null
+        ? String(row.suggested_reminder_message)
+        : null,
   }));
 }
 
@@ -145,7 +154,7 @@ export async function getFollowUpData(businessId: string): Promise<FollowUpRow[]
 
   const { data } = await supabase
     .from("appointments")
-    .select("id, client_name, service, scheduled_at, client_phone")
+    .select("id, client_name, service, scheduled_at, client_phone, suggested_followup_message")
     .eq("business_id", businessId)
     .gte("scheduled_at", lower)
     .lte("scheduled_at", upper)
@@ -159,6 +168,10 @@ export async function getFollowUpData(businessId: string): Promise<FollowUpRow[]
     phone: String(row.client_phone ?? "No phone"),
     service: String(row.service ?? "Service"),
     scheduled_at: String(row.scheduled_at),
+    suggested_followup_message:
+      row.suggested_followup_message != null
+        ? String(row.suggested_followup_message)
+        : null,
   }));
 }
 
@@ -168,7 +181,7 @@ export async function getReactivationData(businessId: string): Promise<Reactivat
 
   const { data } = await supabase
     .from("clients")
-    .select("id, name, phone, email, last_visit")
+    .select("id, name, phone, email, last_visit, suggested_reactivation_message")
     .eq("business_id", businessId)
     .lte("last_visit", threshold)
     .order("last_visit", { ascending: true })
@@ -180,6 +193,10 @@ export async function getReactivationData(businessId: string): Promise<Reactivat
     phone: String(row.phone ?? "No phone"),
     email: String(row.email ?? ""),
     last_visit: row.last_visit ? String(row.last_visit) : null,
+    suggested_reactivation_message:
+      row.suggested_reactivation_message != null
+        ? String(row.suggested_reactivation_message)
+        : null,
   }));
 }
 

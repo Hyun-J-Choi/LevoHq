@@ -1,4 +1,3 @@
-import { generateClaudeMessage } from "@/lib/claude";
 import { getMissedCallsData } from "@/lib/businessData";
 import SendSMSButton from "@/components/SendSMSButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -14,6 +13,9 @@ function formatWhen(iso: string) {
   });
 }
 
+const CANNED_MISSED_CALL_REPLY =
+  "Hi — sorry we missed your call. Reply here or text BOOK and we'll get you scheduled right away.";
+
 export default async function MissedCallPage() {
   const supabase = createSupabaseServerClient();
   const businessId = await getCurrentBusinessId(supabase);
@@ -21,29 +23,12 @@ export default async function MissedCallPage() {
 
   const rows = await getMissedCallsData(businessId);
 
-  const enriched = await Promise.all(
-    rows.map(async (row) => {
-      try {
-        const autoReply = await generateClaudeMessage(
-          `Write a short SMS auto-reply for a missed call at a clinic.
-Caller number: ${row.from_phone}
-Known name (may be unknown): ${row.client_name ?? "unknown"}
-
-Requirements:
-- Under 55 words, SMS tone, warm and professional.
-- Apologize for missing them, invite them to text back or book.
-- Do not claim you looked up their file unless name is known.
-- Single message only, no quotes or markdown.`
-        );
-        return { ...row, autoReply };
-      } catch {
-        return {
-          ...row,
-          autoReply: `Hi — sorry we missed your call. Reply here or text BOOK and we'll get you scheduled right away.`,
-        };
-      }
-    })
-  );
+  // Suggestion is generated once by the voice-status webhook at insert time.
+  // No LLM on render.
+  const enriched = rows.map((row) => ({
+    ...row,
+    autoReply: row.suggested_reply ?? CANNED_MISSED_CALL_REPLY,
+  }));
 
   return (
     <div className="space-y-8">

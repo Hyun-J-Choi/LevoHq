@@ -141,3 +141,33 @@ export function isQuietHours(timezone: string = "America/Los_Angeles"): boolean 
     return false;
   }
 }
+
+export type PreflightResult =
+  | { ok: true }
+  | { ok: false; reason: "no_consent" | "quiet_hours" };
+
+/**
+ * Pre-flight gate to call BEFORE expensive work (Claude generation, etc.).
+ *
+ * Crons used to do `generate message → sendCompliantSMS` and then get a
+ * silent `{sent:false, reason:"quiet_hours"}` at the end, burning Claude
+ * tokens on messages that were never allowed to send. Call this first so
+ * we skip disqualified recipients entirely.
+ *
+ * sendCompliantSMS still re-checks these conditions as a final defense —
+ * this is just the cost-saving early exit.
+ */
+export async function preflightCanSend(params: {
+  phone: string;
+  businessId: string;
+  timezone: string;
+}): Promise<PreflightResult> {
+  if (isQuietHours(params.timezone)) {
+    return { ok: false, reason: "quiet_hours" };
+  }
+  const consent = await hasConsent(params.phone, params.businessId);
+  if (!consent) {
+    return { ok: false, reason: "no_consent" };
+  }
+  return { ok: true };
+}

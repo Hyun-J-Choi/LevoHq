@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateClaudeMessage } from "@/lib/claude";
 import { normalizeToE164 } from "@/lib/phone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { premiumBookingConfirmationPrompt } from "@/lib/messageRecipes";
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,16 +105,13 @@ export async function POST(request: NextRequest) {
     }
 
     const message = await generateClaudeMessage(
-      `Write a personalized premium appointment confirmation SMS.
-Client: ${name}
-Service: ${service}
-Time: ${timeForSms}
-
-Requirements:
-- Keep it under 60 words.
-- Warm, luxe, and concise.
-- Confirm the exact service/time and include one preparation tip.
-- End with a clear way to reschedule if needed.`
+      premiumBookingConfirmationPrompt({
+        clientName: name,
+        service,
+        time: timeForSms,
+      }),
+      undefined,
+      { label: "premium_booking_confirmation" }
     );
 
     return NextResponse.json({ ok: true, message });

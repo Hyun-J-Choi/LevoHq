@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendCompliantSMS } from "@/lib/twilio";
 import { generateClaudeMessage } from "@/lib/claude";
-import { getBusinessSystemPrompt, getBusinessProfile } from "@/lib/businessContext";
+import {
+  getBusinessSystemPrompt,
+  getBusinessProfile,
+  getBusinessTimezone,
+} from "@/lib/businessContext";
+import { preflightCanSend } from "@/lib/sms-compliance";
+import { followupCheckInPrompt } from "@/lib/messageRecipes";
 import { createLogger, genRequestId } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +20,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const log = createLogger({ requestId: genRequestId() });
+  const requestId = genRequestId();
+  const log = createLogger({ requestId });
   const admin = createSupabaseAdmin();
   let followUpSent = 0;
   let reviewSent = 0;
+  let skippedQuiet = 0;
+  let skippedNoConsent = 0;
+  const tzCache = new Map<string, string>();
+
+  const resolveTz = async (businessId: string): Promise<string> => {
+    let tz = tzCache.get(businessId);
+    if (!tz) {
+      tz = await getBusinessTimezone(businessId);
+      tzCache.set(businessId, tz);
+    }
+    return tz;
+  };
 
   const now = Date.now();
 
@@ -38,17 +57,40 @@ export async function GET(request: NextRequest) {
     if (!appt.client_phone) continue;
 
     try {
+      const tz = await resolveTz(appt.business_id);
+      const preflight = await preflightCanSend({
+        phone: appt.client_phone,
+        businessId: appt.business_id,
+        timezone: tz,
+      });
+      if (!preflight.ok) {
+        if (preflight.reason === "quiet_hours") skippedQuiet++;
+        else skippedNoConsent++;
+        continue;
+      }
+
       const systemPrompt = await getBusinessSystemPrompt(appt.business_id);
       const message = await generateClaudeMessage(
-        `Write a post-visit check-in SMS.
-Client: ${appt.client_name ?? "there"}
-Service: ${appt.service}
-
-Ask how they're feeling. Keep under 200 characters. Warm and personal.`,
-        systemPrompt
+        followupCheckInPrompt({
+          clientName: appt.client_name,
+          service: appt.service,
+        }),
+        systemPrompt,
+        { label: "followup_checkin", requestId }
       );
 
-      const result = await sendCompliantSMS(appt.client_phone, message, appt.business_id);
+      // Persist so the dashboard can show without calling Claude on render.
+      await admin
+        .from("appointments")
+        .update({
+          suggested_followup_message: message,
+          suggested_followup_message_at: new Date().toISOString(),
+        })
+        .eq("id", appt.id);
+
+      const result = await sendCompliantSMS(appt.client_phone, message, appt.business_id, {
+        timezone: tz,
+      });
 
       if (result.sent) {
         await admin.from("appointments").update({ follow_up_sent_at: new Date().toISOString() }).eq("id", appt.id);
@@ -75,6 +117,18 @@ Ask how they're feeling. Keep under 200 characters. Warm and personal.`,
     if (!appt.client_phone) continue;
 
     try {
+      const tz = await resolveTz(appt.business_id);
+      const preflight = await preflightCanSend({
+        phone: appt.client_phone,
+        businessId: appt.business_id,
+        timezone: tz,
+      });
+      if (!preflight.ok) {
+        if (preflight.reason === "quiet_hours") skippedQuiet++;
+        else skippedNoConsent++;
+        continue;
+      }
+
       const profile = await getBusinessProfile(appt.business_id);
       const reviewUrl = profile?.google_review_url;
       if (!reviewUrl) continue;
@@ -82,7 +136,9 @@ Ask how they're feeling. Keep under 200 characters. Warm and personal.`,
       const firstName = appt.client_name?.split(" ")[0] ?? "there";
       const body = `Hi ${firstName}, if you loved your visit at ${profile.name}, we'd really appreciate a quick review: ${reviewUrl}`;
 
-      const result = await sendCompliantSMS(appt.client_phone, body, appt.business_id);
+      const result = await sendCompliantSMS(appt.client_phone, body, appt.business_id, {
+        timezone: tz,
+      });
 
       if (result.sent) {
         await admin.from("appointments").update({ review_sent_at: new Date().toISOString() }).eq("id", appt.id);
@@ -93,6 +149,16 @@ Ask how they're feeling. Keep under 200 characters. Warm and personal.`,
     }
   }
 
-  log.info("Follow-up cron complete", { followUpSent, reviewSent });
-  return NextResponse.json({ followUpSent, reviewSent });
+  log.info("Follow-up cron complete", {
+    followUpSent,
+    reviewSent,
+    skippedQuiet,
+    skippedNoConsent,
+  });
+  return NextResponse.json({
+    followUpSent,
+    reviewSent,
+    skippedQuiet,
+    skippedNoConsent,
+  });
 }

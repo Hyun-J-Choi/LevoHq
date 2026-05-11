@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendCompliantSMS } from "@/lib/twilio";
 import { generateClaudeMessage } from "@/lib/claude";
-import { getBusinessSystemPrompt } from "@/lib/businessContext";
+import {
+  getBusinessSystemPrompt,
+  getBusinessTimezone,
+} from "@/lib/businessContext";
+import { preflightCanSend } from "@/lib/sms-compliance";
+import { treatmentOverduePrompt } from "@/lib/messageRecipes";
 import { createLogger, genRequestId } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
@@ -11,9 +16,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const log = createLogger({ requestId: genRequestId() });
+  const requestId = genRequestId();
+  const log = createLogger({ requestId });
   const admin = createSupabaseAdmin();
   let sent = 0;
+  let skippedQuiet = 0;
+  let skippedNoConsent = 0;
+  const tzCache = new Map<string, string>();
 
   const { data: protocols } = await admin
     .from("treatment_protocols")
@@ -46,19 +55,37 @@ export async function GET(request: NextRequest) {
       seenClients.add(clientKey);
 
       try {
+        let tz = tzCache.get(protocol.business_id);
+        if (!tz) {
+          tz = await getBusinessTimezone(protocol.business_id);
+          tzCache.set(protocol.business_id, tz);
+        }
+        const preflight = await preflightCanSend({
+          phone: appt.client_phone,
+          businessId: protocol.business_id,
+          timezone: tz,
+        });
+        if (!preflight.ok) {
+          if (preflight.reason === "quiet_hours") skippedQuiet++;
+          else skippedNoConsent++;
+          continue;
+        }
+
         const systemPrompt = await getBusinessSystemPrompt(protocol.business_id);
         const message = await generateClaudeMessage(
-          `Write a treatment follow-up reminder SMS.
-Client: ${appt.client_name ?? "there"}
-Service: ${protocol.service}
-Days since last treatment: ${protocol.interval_days}
-${protocol.reminder_template ? `Template hint: ${protocol.reminder_template}` : ""}
-
-Keep under 250 characters. Suggest rebooking for their next session.`,
-          systemPrompt
+          treatmentOverduePrompt({
+            clientName: appt.client_name,
+            service: protocol.service,
+            intervalDays: protocol.interval_days,
+            templateHint: protocol.reminder_template,
+          }),
+          systemPrompt,
+          { label: "treatment_overdue", requestId }
         );
 
-        const result = await sendCompliantSMS(appt.client_phone, message, protocol.business_id);
+        const result = await sendCompliantSMS(appt.client_phone, message, protocol.business_id, {
+          timezone: tz,
+        });
         if (result.sent) {
           sent++;
           // Mark this appointment so we don't re-send tomorrow
@@ -73,6 +100,10 @@ Keep under 250 characters. Suggest rebooking for their next session.`,
     }
   }
 
-  log.info("Treatment reminders cron complete", { sent });
-  return NextResponse.json({ sent });
+  log.info("Treatment reminders cron complete", {
+    sent,
+    skippedQuiet,
+    skippedNoConsent,
+  });
+  return NextResponse.json({ sent, skippedQuiet, skippedNoConsent });
 }

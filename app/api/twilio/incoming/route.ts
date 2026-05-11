@@ -14,6 +14,10 @@ import {
   recordOptIn,
   recordConsent,
 } from "@/lib/sms-compliance";
+import {
+  assertSignatureValidationConfigOk,
+  isSignatureValidationSkipped,
+} from "@/lib/twilioSignatureGuard";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   computeAvailabilitySlots,
@@ -35,12 +39,18 @@ function twimlResponse() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Fix #11: refuse to handle the request at all if the prod-boot
+    // invariant was somehow bypassed (cold start with stale instrumentation,
+    // missed instrumentation hook on the platform, etc).
+    assertSignatureValidationConfigOk();
+
     const params = await twilioFormToParams(request);
     const { authToken } = getTwilioEnv();
 
-    // Validate Twilio signature
-    const skipValidation =
-      process.env.TWILIO_SKIP_SIGNATURE_VALIDATION === "true";
+    // Validate Twilio signature. Skip flag is only honored in non-prod;
+    // assertSignatureValidationConfigOk() above guarantees we never reach
+    // this line with skip=true in production.
+    const skipValidation = isSignatureValidationSkipped();
     if (!skipValidation) {
       const signature = request.headers.get("x-twilio-signature");
       const url = getTwilioWebhookUrl(request);
@@ -170,7 +180,7 @@ Tone: warm, professional, and caring — like a knowledgeable front desk team me
 STRICT RULES — never break these:
 1. ${schedulingRule}
 2. NEVER invent or guess specific pricing. If asked about cost, say a team member will send over the details shortly.
-3. NEVER give medical advice or make claims about treatment results.
+3. MEDICAL ADVICE PROHIBITED. Never recommend any drug or supplement (prescription or OTC — including ibuprofen, Tylenol, Benadryl, aspirin, antibiotics, retinoids). Never state dosages (mg, mcg, units, tablets, "take X"). Never diagnose. Never interpret symptoms, reactions, bruising, swelling, allergies, side effects, or pain. If the client mentions anything health-related beyond basic service information, respond ONLY with: "A team member will reach out shortly to help with that." Do not elaborate. Do not speculate.
 4. If a client seems upset or has a complaint, express empathy and say a team member will reach out shortly.
 5. You can warmly acknowledge thank-you messages, compliments, and general questions about services.
 6. Always end messages that need a human follow-up with: "A team member will be in touch shortly!"
@@ -182,7 +192,9 @@ ${history || "(no prior messages)"}
 Latest inbound message from client:
 ${body}
 
-Reply as a single SMS message only — no quotes, no markdown.`
+Reply as a single SMS message only — no quotes, no markdown.`,
+        undefined,
+        { label: "inbound_sms_reply" }
       );
     } catch (err) {
       console.error("Claude reply failed:", err);
@@ -190,9 +202,10 @@ Reply as a single SMS message only — no quotes, no markdown.`
         "Thanks for your message — our team will get back to you shortly. Reply BOOK anytime to schedule.";
     }
 
-    // Send reply with compliance checks
+    // Send reply with compliance checks (includes the medical-advice guard)
     await sendCompliantSMS(from, reply, businessId, {
       timezone: business.timezone ?? undefined,
+      sourceLabel: "inbound_sms_reply",
     });
 
     return twimlResponse();

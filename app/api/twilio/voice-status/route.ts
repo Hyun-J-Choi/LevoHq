@@ -7,6 +7,12 @@ import {
   validateTwilioSignature,
   sendCompliantSMS,
 } from "@/lib/twilio";
+import { generateClaudeMessage } from "@/lib/claude";
+import { missedCallAutoReplyPrompt } from "@/lib/messageRecipes";
+import {
+  assertSignatureValidationConfigOk,
+  isSignatureValidationSkipped,
+} from "@/lib/twilioSignatureGuard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,10 +25,13 @@ const MISSED_STATUSES = new Set(["no-answer", "busy", "failed", "canceled"]);
  */
 export async function POST(request: NextRequest) {
   try {
+    // Fix #11: defensive per-request boot invariant.
+    assertSignatureValidationConfigOk();
+
     const params = await twilioFormToParams(request);
     const { authToken } = getTwilioEnv();
 
-    const skipValidation = process.env.TWILIO_SKIP_SIGNATURE_VALIDATION === "true";
+    const skipValidation = isSignatureValidationSkipped();
     if (!skipValidation) {
       const signature = request.headers.get("x-twilio-signature");
       const url = getTwilioWebhookUrl(request);
@@ -54,6 +63,20 @@ export async function POST(request: NextRequest) {
       return new NextResponse("", { status: 204 });
     }
 
+    // Pre-generate the AI suggestion ONCE here so the dashboard can render
+    // the Missed Calls page without calling Claude per row on every load.
+    // Failures are non-fatal — the dashboard falls back to a canned reply.
+    let suggestedReply: string | null = null;
+    try {
+      suggestedReply = await generateClaudeMessage(
+        missedCallAutoReplyPrompt({ callerNumber: from }),
+        undefined,
+        { label: "missed_call_autoreply" }
+      );
+    } catch (err) {
+      console.warn("[voice-status] suggested_reply generation failed:", err);
+    }
+
     // Log the missed call
     const { error: insertError } = await admin.from("missed_calls").insert({
       business_id: business.id,
@@ -61,6 +84,8 @@ export async function POST(request: NextRequest) {
       to_phone: to || null,
       call_sid: callSid,
       status: "missed",
+      suggested_reply: suggestedReply,
+      suggested_reply_at: suggestedReply ? new Date().toISOString() : null,
     });
     if (insertError) console.error("missed_calls insert:", insertError);
 

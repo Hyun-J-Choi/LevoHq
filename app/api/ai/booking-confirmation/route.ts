@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClaudeMessage } from "@/lib/claude";
 import { getBusinessSystemPrompt } from "@/lib/businessContext";
+import { bookingRequestAckPrompt } from "@/lib/messageRecipes";
 import { createLogger, genRequestId } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
-  const log = createLogger({ requestId: genRequestId() });
+  const requestId = genRequestId();
+  const log = createLogger({ requestId });
 
   try {
     const body = (await request.json()) as {
@@ -22,14 +24,14 @@ export async function POST(request: NextRequest) {
     log.info("Generating booking confirmation", { businessId: body.businessId });
 
     const message = await generateClaudeMessage(
-      `Write a confirmation message for a client booking request.
-Client name: ${body.name}
-Service: ${body.service}
-Preferred date: ${body.preferredDate}
-Preferred time: ${body.preferredTime}
-
-Keep it to 3-4 sentences, personal, concise, and warm. Include next steps and appreciation. Stay under 280 characters for SMS.`,
-      systemPrompt
+      bookingRequestAckPrompt({
+        clientName: body.name,
+        service: body.service,
+        preferredDate: body.preferredDate,
+        preferredTime: body.preferredTime,
+      }),
+      systemPrompt,
+      { label: "booking_request_ack", requestId }
     );
 
     return NextResponse.json({ message });

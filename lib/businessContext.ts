@@ -14,6 +14,24 @@ interface BusinessProfile {
 }
 
 /**
+ * Fast path: just fetch the timezone column. Used by crons that need the
+ * TZ for quiet-hours gating BEFORE calling Claude. Avoids pulling the full
+ * services/hours/brand_voice payload (~hundreds of bytes per row) purely
+ * for a string.
+ */
+export async function getBusinessTimezone(
+  businessId: string
+): Promise<string> {
+  const admin = createSupabaseAdmin();
+  const { data } = await admin
+    .from("businesses")
+    .select("timezone")
+    .eq("id", businessId)
+    .single();
+  return (data?.timezone as string) ?? "America/Los_Angeles";
+}
+
+/**
  * Fetches the full business profile for AI context injection.
  */
 export async function getBusinessProfile(

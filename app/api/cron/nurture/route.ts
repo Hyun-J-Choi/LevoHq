@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendCompliantSMS } from "@/lib/twilio";
 import { generateClaudeMessage } from "@/lib/claude";
-import { getBusinessSystemPrompt } from "@/lib/businessContext";
+import {
+  getBusinessSystemPrompt,
+  getBusinessTimezone,
+} from "@/lib/businessContext";
+import { preflightCanSend } from "@/lib/sms-compliance";
+import { nurturePrompt } from "@/lib/messageRecipes";
 import { createLogger, genRequestId } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
@@ -11,9 +16,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const log = createLogger({ requestId: genRequestId() });
+  const requestId = genRequestId();
+  const log = createLogger({ requestId });
   const admin = createSupabaseAdmin();
   let sent = 0;
+  let skippedQuiet = 0;
+  let skippedNoConsent = 0;
+  const tzCache = new Map<string, string>();
 
   const { data: sequences } = await admin
     .from("nurture_sequences")
@@ -27,18 +36,36 @@ export async function GET(request: NextRequest) {
     if (!lead?.phone) continue;
 
     try {
+      let tz = tzCache.get(seq.business_id);
+      if (!tz) {
+        tz = await getBusinessTimezone(seq.business_id);
+        tzCache.set(seq.business_id, tz);
+      }
+      const preflight = await preflightCanSend({
+        phone: lead.phone,
+        businessId: seq.business_id,
+        timezone: tz,
+      });
+      if (!preflight.ok) {
+        if (preflight.reason === "quiet_hours") skippedQuiet++;
+        else skippedNoConsent++;
+        continue;
+      }
+
       const systemPrompt = await getBusinessSystemPrompt(seq.business_id);
       const message = await generateClaudeMessage(
-        `Write a lead nurture SMS (step ${seq.step} of 3).
-Lead name: ${lead.name ?? "there"}
-Source: ${lead.source ?? "website"}
-
-Step 1: Welcome + value prop. Step 2: Social proof + urgency. Step 3: Direct offer + CTA.
-Keep under 250 characters. SMS-friendly.`,
-        systemPrompt
+        nurturePrompt({
+          leadName: lead.name,
+          source: lead.source,
+          step: seq.step,
+        }),
+        systemPrompt,
+        { label: `nurture_step_${seq.step}`, requestId }
       );
 
-      const result = await sendCompliantSMS(lead.phone, message, seq.business_id);
+      const result = await sendCompliantSMS(lead.phone, message, seq.business_id, {
+        timezone: tz,
+      });
 
       if (result.sent) {
         await admin.from("nurture_sequences").update({ sent_at: new Date().toISOString() }).eq("id", seq.id);
@@ -49,6 +76,6 @@ Keep under 250 characters. SMS-friendly.`,
     }
   }
 
-  log.info("Nurture cron complete", { sent });
-  return NextResponse.json({ sent });
+  log.info("Nurture cron complete", { sent, skippedQuiet, skippedNoConsent });
+  return NextResponse.json({ sent, skippedQuiet, skippedNoConsent });
 }
