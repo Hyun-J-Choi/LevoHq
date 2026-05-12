@@ -46,6 +46,8 @@ export async function updateSession(request: NextRequest) {
     "/api/auth",
     "/api/twilio/incoming",
     "/api/twilio/voice-status",
+    "/api/twilio/delivery-status",
+    "/api/twilio/smoke-test",
     "/api/cron",
     "/api/lead",
     "/api/availability",
