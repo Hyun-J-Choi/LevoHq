@@ -38,11 +38,16 @@ export function reactivationPrompt(p: {
   clientName: string;
   lastVisit: string | Date;
 }): string {
-  return `Write a win-back SMS for an inactive client.
+  return `Write a soft, low-pressure win-back SMS for an inactive client.
 Client: ${p.clientName}
 Last visit: ${formatDateUS(p.lastVisit)}
 
-Keep under 250 characters. Warm, exclusive, non-pushy. Include a rebooking incentive and CTA.`;
+Requirements:
+- Warm and personal, not salesy. Do NOT use words like "deal", "discount", "exclusive offer", "limited time", "act now", "FREE".
+- One gentle invitation to come back; no hard CTA.
+- Use plain conversational language; at most one exclamation mark.
+- No URL shorteners. No ALL CAPS words.
+- Keep under 250 characters.`;
 }
 
 // ── Post-visit check-in (24-48h after completed appt) ─────────────────────
@@ -73,10 +78,14 @@ Keep under 250 characters. Include CTA to reply if they need to reschedule.`;
 
 // ── Birthday SMS ──────────────────────────────────────────────────────────
 export function birthdayPrompt(p: { clientName: string }): string {
-  return `Write a birthday SMS for a valued client.
+  return `Write a warm birthday SMS for a valued client.
 Client: ${p.clientName}
 
-Keep under 200 characters. Include a birthday treat or discount offer. Make it feel special and personal.`;
+Requirements:
+- Personal, sincere tone — like a friend remembering their birthday.
+- Optionally mention a small in-spa birthday gesture, but do NOT advertise discounts, percent-off, or "free" services in the message body (those phrases trigger carrier spam filters).
+- Plain conversational sentences. At most one exclamation mark. No ALL CAPS.
+- Keep under 200 characters.`;
 }
 
 // ── Lead nurture sequence (3 steps) ───────────────────────────────────────
@@ -89,8 +98,16 @@ export function nurturePrompt(p: {
 Lead name: ${p.leadName ?? "there"}
 Source: ${p.source ?? "website"}
 
-Step 1: Welcome + value prop. Step 2: Social proof + urgency. Step 3: Direct offer + CTA.
-Keep under 250 characters. SMS-friendly.`;
+Tone framework:
+  Step 1: Warm welcome + one sentence about what the clinic does well.
+  Step 2: A short authentic client story or service detail; do NOT manufacture urgency.
+  Step 3: Gentle, conversational invitation to book; one clear next step.
+
+Requirements:
+- Do NOT use the words "urgent", "act now", "limited time", "FREE", "winner", "guarantee".
+- No ALL CAPS for emphasis. At most one exclamation mark.
+- No URL shorteners.
+- Keep under 250 characters.`;
 }
 
 // ── Treatment-cycle overdue reminder ──────────────────────────────────────
@@ -106,7 +123,11 @@ Service: ${p.service}
 Days since last treatment: ${p.intervalDays}
 ${p.templateHint ? `Template hint: ${p.templateHint}` : ""}
 
-Keep under 250 characters. Suggest rebooking for their next session.`;
+Requirements:
+- Educational and caring — frame around the client's results, not the sale.
+- Suggest rebooking but do not pressure. No "act now", "limited time", "today only".
+- Plain language. No ALL CAPS. At most one exclamation mark. No URL shorteners.
+- Keep under 250 characters.`;
 }
 
 // ── Missed-call auto-reply (Twilio voice-status webhook) ──────────────────

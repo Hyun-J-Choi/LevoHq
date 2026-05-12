@@ -17,6 +17,28 @@ export function getTwilioEnv() {
   return { accountSid, authToken, fromNumber };
 }
 
+/**
+ * Resolve the public origin of this app (used for Twilio StatusCallback URLs).
+ *
+ * Priority:
+ *   1. PUBLIC_APP_URL — explicit override, recommended for prod
+ *   2. NEXT_PUBLIC_SITE_URL — common Next.js convention
+ *   3. VERCEL_PROJECT_PRODUCTION_URL — set automatically on Vercel prod
+ *   4. VERCEL_URL — set automatically on preview/prod (host only, prefix https://)
+ *
+ * Returns null if none are set; the caller should then omit statusCallback
+ * rather than send a broken URL.
+ */
+export function getPublicAppOrigin(): string | null {
+  const explicit = process.env.PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (prod) return `https://${prod.replace(/\/+$/, "")}`;
+  const vercel = process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel.replace(/\/+$/, "")}`;
+  return null;
+}
+
 export function getTwilioClient() {
   const { accountSid, authToken } = getTwilioEnv();
   return twilio(accountSid, authToken);
@@ -46,20 +68,68 @@ export async function sendCompliantSMS(
 }> {
   // Rate limit: 30 sends per minute per business
   if (!checkRateLimit(`sms:${businessId}`, 30)) {
+    console.log(
+      JSON.stringify({
+        tag: "sms_blocked",
+        reason: "rate_limited",
+        businessId,
+        to,
+        sourceLabel: options?.sourceLabel,
+        ts: new Date().toISOString(),
+      })
+    );
     return { sent: false, reason: "rate_limited" };
+  }
+
+  // Per-recipient pacing: never send the same recipient more than once every
+  // 30 seconds. Carriers treat back-to-back sends to the same handset as
+  // spam-burst patterns and will downgrade the sender's reputation.
+  if (!checkRateLimit(`sms-recipient:${businessId}:${to}`, 2)) {
+    console.log(
+      JSON.stringify({
+        tag: "sms_blocked",
+        reason: "recipient_pacing",
+        businessId,
+        to,
+        sourceLabel: options?.sourceLabel,
+        ts: new Date().toISOString(),
+      })
+    );
+    return { sent: false, reason: "recipient_pacing" };
   }
 
   // Check consent (unless explicitly skipped for keyword responses)
   if (!options?.skipConsent) {
     const consent = await hasConsent(to, businessId);
     if (!consent) {
+      console.log(
+        JSON.stringify({
+          tag: "sms_blocked",
+          reason: "no_consent",
+          businessId,
+          to,
+          sourceLabel: options?.sourceLabel,
+          ts: new Date().toISOString(),
+        })
+      );
       return { sent: false, reason: "no_consent" };
     }
   }
 
-  // Check quiet hours
+  // Check quiet hours (TCPA 8am–9pm local time)
   const tz = options?.timezone ?? "America/Los_Angeles";
   if (isQuietHours(tz)) {
+    console.log(
+      JSON.stringify({
+        tag: "sms_blocked",
+        reason: "quiet_hours",
+        businessId,
+        to,
+        timezone: tz,
+        sourceLabel: options?.sourceLabel,
+        ts: new Date().toISOString(),
+      })
+    );
     return { sent: false, reason: "quiet_hours" };
   }
 
@@ -100,11 +170,49 @@ export async function sendCompliantSMS(
   // Send via Twilio
   const { fromNumber } = getTwilioEnv();
   const client = getTwilioClient();
-  const sent = await client.messages.create({
-    from: fromNumber,
-    to,
-    body: outboundBody,
-  });
+
+  // If the app has a public URL we know about, ask Twilio to POST status
+  // updates to our delivery-status webhook. Without this, we have no
+  // visibility into whether messages actually reach handsets.
+  const origin = getPublicAppOrigin();
+  const statusCallback = origin
+    ? `${origin}/api/twilio/delivery-status`
+    : undefined;
+
+  let sent: { sid: string };
+  try {
+    sent = await client.messages.create({
+      from: fromNumber,
+      to,
+      body: outboundBody,
+      ...(statusCallback ? { statusCallback } : {}),
+    });
+  } catch (sendErr) {
+    console.error(
+      JSON.stringify({
+        tag: "sms_send_failed",
+        businessId,
+        to,
+        sourceLabel: options?.sourceLabel,
+        error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        ts: new Date().toISOString(),
+      })
+    );
+    throw sendErr;
+  }
+
+  // Structured success log
+  console.log(
+    JSON.stringify({
+      tag: "sms_sent",
+      businessId,
+      to,
+      messageSid: sent.sid,
+      bodyLen: outboundBody.length,
+      sourceLabel: options?.sourceLabel,
+      ts: new Date().toISOString(),
+    })
+  );
 
   // Log to conversations
   const admin = createSupabaseAdmin();
@@ -115,6 +223,10 @@ export async function sendCompliantSMS(
     from_phone: fromNumber,
     to_phone: to,
     message: outboundBody,
+    // Initial status — will be updated by /api/twilio/delivery-status as
+    // Twilio reports each lifecycle event for this SID.
+    delivery_status: "queued",
+    delivery_updated_at: new Date().toISOString(),
   });
 
   return {

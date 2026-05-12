@@ -169,6 +169,18 @@ CURRENT AVAILABILITY for ${avail.service.name}: (no open slots in the system for
       ? "Scheduling: When CURRENT AVAILABILITY appears below, use only those day, time, and provider options. If it lists no slots, do not invent times — offer team help."
       : "Scheduling: NEVER invent or guess specific availability, times, or dates. If asked about scheduling without real slots below, say a team member will confirm shortly.";
 
+    // Determine whether this is the first outbound from us in this thread.
+    // Carriers heavily weight sender identification on the first reply of a
+    // new conversation. If we've never sent to this person before, we must
+    // self-identify and include opt-out language.
+    const hasPriorOutbound = (recent ?? []).some(
+      (row) => row.direction === "outbound"
+    );
+
+    const firstReplyRule = hasPriorOutbound
+      ? "Continuation: This is not the first reply in this conversation. No need to repeat business name or opt-out language."
+      : `First reply: Begin the message with "${business.name ?? "Our team"}: " so the recipient instantly recognizes who is messaging them. Append "Reply STOP to opt out." at the very end. Both are required by US carrier guidelines and reduce spam filtering.`;
+
     // Generate AI reply
     let reply: string;
     try {
@@ -184,6 +196,8 @@ STRICT RULES — never break these:
 4. If a client seems upset or has a complaint, express empathy and say a team member will reach out shortly.
 5. You can warmly acknowledge thank-you messages, compliments, and general questions about services.
 6. Always end messages that need a human follow-up with: "A team member will be in touch shortly!"
+7. ${firstReplyRule}
+8. SMS deliverability: avoid spam-trigger language. Do NOT use ALL CAPS for emphasis, do NOT use words like "FREE", "URGENT", "WINNER", "ACT NOW", "LIMITED TIME". Use plain, conversational sentences. Use at most one exclamation mark per reply. Do not include URL shorteners (bit.ly, tinyurl, t.co); only use full levohq.ai links if a link is necessary.
 ${availabilityBlock}
 
 Recent conversation (newest last):
