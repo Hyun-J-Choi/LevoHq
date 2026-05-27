@@ -43,6 +43,7 @@ export async function updateSession(request: NextRequest) {
     "/demo",
     "/privacy",
     "/terms",
+    "/sms-consent",
     "/api/auth",
     "/api/twilio/incoming",
     "/api/twilio/voice-status",
