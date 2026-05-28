@@ -120,6 +120,42 @@ export async function POST(request: NextRequest) {
     // Auto-record consent for inbound messages (they texted us first)
     await recordConsent(from, businessId, "opt_in_sms");
 
+    // BOOK shortcut: if the message is bare "BOOK" (with or without a
+    // period), reply with a numbered service menu instead of routing to
+    // the AI. The AI path has no booking tool and would dead-end at
+    // "team will be in touch shortly", which contradicts the welcome-flow
+    // promise that BOOK schedules. Once the customer replies with a
+    // service name, the existing availability-lookup path takes over.
+    const normalizedBody = body.trim().toLowerCase();
+    if (/^book\.?$/.test(normalizedBody)) {
+      const { data: services } = await admin
+        .from("services")
+        .select("name")
+        .eq("business_id", businessId)
+        .eq("is_active", true)
+        .order("name")
+        .limit(8);
+
+      let menu: string;
+      if (services && services.length > 0) {
+        const list = services
+          .map((s, i) => `${i + 1}. ${s.name}`)
+          .join("\n");
+        const sample = services[0].name;
+        menu = `Which service would you like to book?\n${list}\nReply with the name (e.g., "${sample}") and we'll send open times.`;
+      } else {
+        menu =
+          "Which service would you like to book? Reply with a service name (e.g., Botox, Hydrafacial) and we'll send open times.";
+      }
+
+      await sendCompliantSMS(from, menu, businessId, {
+        timezone: business.timezone ?? undefined,
+        sourceLabel: "book_menu",
+      });
+
+      return twimlResponse();
+    }
+
     // Fetch recent conversation history for context
     const { data: recent } = await admin
       .from("conversations")

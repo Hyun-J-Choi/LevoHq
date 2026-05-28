@@ -14,17 +14,23 @@ import { createLogger } from "@/lib/logger";
  *     duration, token counts, and an estimated cost in cents so the
  *     operator can spot runaway prompts without scraping invoices.
  */
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+// Model is env-var driven so we can rotate without a code deploy.
+// Hardcoding a dated SKU (e.g. "claude-sonnet-4-20250514") caused a
+// silent prod outage when Anthropic deprecated it ~12 months later:
+// every call 4xx'd, retries skipped (4xx is non-retryable by design),
+// and the inbound webhook fell through to its canned fallback message.
+// Lesson: never hardcode a dated model ID in long-lived services.
+const DEFAULT_MODEL = process.env.CLAUDE_MODEL ?? "claude-sonnet-4-6";
 const DEFAULT_MAX_TOKENS = 200;
 const DEFAULT_TEMPERATURE = 0.3;
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 
-// Sonnet 4 public pricing as of May 2025. Drift-prone: this is for
+// Sonnet-family public pricing snapshot. Drift-prone: this is for
 // relative/p95 dashboards, not billing. Real cost lives in the Anthropic
-// invoice. If a future model is used, revisit these rates.
-const SONNET_4_INPUT_USD_PER_MTOK = 3;
-const SONNET_4_OUTPUT_USD_PER_MTOK = 15;
+// invoice. Revisit when the default model rotates.
+const SONNET_INPUT_USD_PER_MTOK = 3;
+const SONNET_OUTPUT_USD_PER_MTOK = 15;
 
 interface AnthropicResponse {
   content?: Array<{ type: string; text?: string }>;
@@ -48,12 +54,12 @@ function estimateCents(
   inputTokens: number,
   outputTokens: number
 ): number | null {
-  // Only Sonnet 4 is priced in this table. For other models, return null
-  // rather than lie — the log line will still show token counts.
-  if (!model.startsWith("claude-sonnet-4")) return null;
+  // Only Sonnet-family is priced in this table. For other models,
+  // return null rather than lie — the log line will still show token counts.
+  if (!model.startsWith("claude-sonnet-")) return null;
   const usd =
-    (inputTokens * SONNET_4_INPUT_USD_PER_MTOK +
-      outputTokens * SONNET_4_OUTPUT_USD_PER_MTOK) /
+    (inputTokens * SONNET_INPUT_USD_PER_MTOK +
+      outputTokens * SONNET_OUTPUT_USD_PER_MTOK) /
     1_000_000;
   return Math.round(usd * 100 * 10_000) / 10_000; // 4 decimals of a cent
 }
