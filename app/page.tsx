@@ -57,6 +57,15 @@ export default function HomePage() {
               <p className="mt-3 text-center text-[12px] text-neutral-600">
                 No setup fees. No long-term contract. Cancel anytime.
               </p>
+              <div className="mt-6 flex items-center justify-center">
+                <Link
+                  href="/demo"
+                  className="group inline-flex items-center gap-2 text-[14px] font-medium text-[#D4A853] transition hover:text-[#e0bc6a]"
+                >
+                  Try the live demo — talk to it like your client would
+                  <span className="transition group-hover:translate-x-0.5">→</span>
+                </Link>
+              </div>
             </div>
           </div>
         </section>
@@ -259,7 +268,7 @@ export default function HomePage() {
                     "AI messaging in your brand voice",
                     "Client communication dashboard",
                   ],
-                  cta: "Book a demo",
+                  cta: "See it live",
                   featured: false,
                 },
                 {
@@ -277,7 +286,7 @@ export default function HomePage() {
                     "Revenue attribution dashboard",
                     "Priority support",
                   ],
-                  cta: "Book a demo",
+                  cta: "See it live",
                   featured: true,
                 },
               ].map((tier) => (
@@ -329,37 +338,40 @@ export default function HomePage() {
         <section id="demo" className="scroll-mt-20 px-5 py-20 md:px-8 md:py-28">
           <div className="mx-auto max-w-2xl rounded-2xl border border-[#D4A853]/20 bg-[#D4A853]/[0.03] p-10 md:p-14">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4A853]">
-              Book a 20-minute demo
+              See it for yourself
             </p>
             <h2 className="mt-4 text-2xl font-semibold tracking-tight text-white md:text-3xl">
-              See exactly how many clients you&apos;re losing — and how we get them back.
+              Don&apos;t take our word for it. Talk to the AI yourself.
             </h2>
             <p className="mt-4 text-[15px] leading-relaxed text-neutral-500">
-              We&apos;ll walk through the full flow live, show you the dashboard, and give you a
-              real estimate of what LevoHQ recovers for a clinic your size. No pitch deck. No pressure.
+              It&apos;s the same assistant that books appointments, answers pricing,
+              and wins back clients for the clinics we work with. Try it right now —
+              no signup, no calendar, no sales call.
             </p>
-            <ul className="mt-6 space-y-2 text-[14px] text-neutral-400">
-              {[
-                "20 minutes, fully recorded so you can share with your team",
-                "We map your current retention gap to an actual dollar figure",
-                "You leave with a live demo number you can text right now",
-              ].map((item) => (
-                <li key={item} className="flex gap-2">
-                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#D4A853]" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
             <div className="mt-8">
-              <EmailCapture source="demo-footer" placeholder="Work email" buttonLabel="Book a demo →" />
+              <Link
+                href="/demo"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#D4A853] px-6 py-3 text-[15px] font-semibold tracking-tight text-[#0A0A0A] transition hover:brightness-105"
+              >
+                Try the live demo
+                <span aria-hidden>→</span>
+              </Link>
             </div>
-            <p className="mt-6 text-center text-[13px] text-neutral-600">
-              Or email{" "}
-              <a href="mailto:hello@levohq.com" className="text-[#D4A853] hover:underline">
-                hello@levohq.com
-              </a>{" "}
-              directly.
-            </p>
+            <div className="mt-10 border-t border-white/[0.08] pt-8">
+              <p className="text-[14px] text-neutral-400">
+                Prefer we reach out? Leave your email and we&apos;ll get you set up.
+              </p>
+              <div className="mt-4">
+                <EmailCapture source="demo-footer" placeholder="Work email" buttonLabel="Get early access →" />
+              </div>
+              <p className="mt-6 text-center text-[13px] text-neutral-600">
+                Or email{" "}
+                <a href="mailto:hello@levohq.com" className="text-[#D4A853] hover:underline">
+                  hello@levohq.com
+                </a>{" "}
+                directly.
+              </p>
+            </div>
           </div>
 
           <footer className="mx-auto mt-20 max-w-6xl border-t border-white/[0.06] pt-10 text-center text-[12px] text-neutral-600">

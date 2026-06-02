@@ -179,6 +179,7 @@ export async function POST(request: NextRequest) {
     if (messageSuggestsAvailabilityLookup(body) && serviceSearch) {
       try {
         const avail = await computeAvailabilitySlots(admin, {
+          businessId,
           serviceName: serviceSearch,
           dateParam: "this_week",
           slotLimit: 5,

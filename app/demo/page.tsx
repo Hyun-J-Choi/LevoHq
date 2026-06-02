@@ -6,6 +6,8 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
+import Link from "next/link";
+import EmailCapture from "@/components/landing/EmailCapture";
 
 type ChatRole = "user" | "assistant";
 
@@ -18,6 +20,11 @@ type DemoChatApiResponse = {
   text?: string;
   error?: string;
 };
+
+// Brand palette (matches the marketing site / globals).
+const GOLD = "#D4A853";
+const GOLD_DEEP = "#b8923f";
+const INK = "#0A0A0A";
 
 const SUGGESTED_MESSAGES = [
   "Do you have Botox available this week?",
@@ -108,25 +115,68 @@ export default function LevoDemo() {
   return (
     <div
       style={{
+        position: "relative",
         minHeight: "100vh",
-        background: "linear-gradient(145deg, #0a0a0f 0%, #0d1117 40%, #0f1923 100%)",
+        background:
+          "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212,168,83,0.08), transparent), #0A0A0A",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "20px",
-        fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
+        padding: "72px 20px 40px",
+        fontFamily:
+          "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
+      {/* Top bar — keeps the demo tied to the brand and gives a way back */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 56,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 20px",
+        }}
+      >
+        <Link
+          href="/"
+          style={{
+            color: "#F5F2E8",
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            textDecoration: "none",
+          }}
+        >
+          Levo<span style={{ color: GOLD }}>HQ</span>
+        </Link>
+        <Link
+          href="/#pricing"
+          style={{
+            color: "rgba(245,242,232,0.6)",
+            fontSize: 13,
+            fontWeight: 500,
+            textDecoration: "none",
+          }}
+        >
+          Pricing
+        </Link>
+      </div>
+
       {/* Phone Frame */}
       <div
         style={{
           width: "100%",
           maxWidth: 420,
-          background: "linear-gradient(180deg, #1a1a2e 0%, #16213e 100%)",
+          background: "linear-gradient(180deg, #1c1c1c 0%, #121212 100%)",
           borderRadius: 44,
           padding: "12px",
-          boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 25px 80px rgba(0,0,0,0.6), 0 0 120px rgba(99,102,241,0.08)",
+          boxShadow:
+            "0 0 0 1px rgba(255,255,255,0.06), 0 25px 80px rgba(0,0,0,0.6), 0 0 120px rgba(212,168,83,0.10)",
         }}
       >
         {/* Inner Screen */}
@@ -135,7 +185,7 @@ export default function LevoDemo() {
             background: "#000",
             borderRadius: 34,
             overflow: "hidden",
-            height: "min(75vh, 680px)",
+            height: "min(72vh, 660px)",
             display: "flex",
             flexDirection: "column",
           }}
@@ -153,7 +203,9 @@ export default function LevoDemo() {
             }}
           >
             <span>{formatTime()}</span>
-            <div style={{ width: 120, height: 28, background: "#000", borderRadius: 20 }} />
+            <div
+              style={{ width: 120, height: 28, background: "#000", borderRadius: 20 }}
+            />
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               <svg width="16" height="12" viewBox="0 0 16 12" fill="white">
                 <rect x="0" y="7" width="3" height="5" rx="0.5" opacity="0.4" />
@@ -184,23 +236,30 @@ export default function LevoDemo() {
                 width: 40,
                 height: 40,
                 borderRadius: 20,
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: 16,
                 fontWeight: 700,
-                color: "#fff",
+                color: INK,
                 flexShrink: 0,
               }}
             >
               G
             </div>
             <div>
-              <div style={{ color: "#fff", fontWeight: 600, fontSize: 16, letterSpacing: "-0.01em" }}>
+              <div
+                style={{
+                  color: "#fff",
+                  fontWeight: 600,
+                  fontSize: 16,
+                  letterSpacing: "-0.01em",
+                }}
+              >
                 Glow Med Spa
               </div>
-              <div style={{ color: "#6366f1", fontSize: 12, fontWeight: 500 }}>
+              <div style={{ color: GOLD, fontSize: 12, fontWeight: 500 }}>
                 {loading ? "typing..." : "AI Assistant • Online"}
               </div>
             </div>
@@ -218,14 +277,24 @@ export default function LevoDemo() {
             }}
           >
             {!started && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 24, padding: "20px 0" }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 24,
+                  padding: "20px 0",
+                }}
+              >
                 <div style={{ textAlign: "center" }}>
                   <div
                     style={{
                       width: 64,
                       height: 64,
                       borderRadius: 32,
-                      background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                      background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -235,25 +304,48 @@ export default function LevoDemo() {
                   >
                     ✨
                   </div>
-                  <div style={{ color: "#fff", fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
-                    Try our AI Assistant
+                  <div
+                    style={{
+                      color: "#fff",
+                      fontSize: 18,
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Talk to it like your client would
                   </div>
-                  <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, lineHeight: 1.5, maxWidth: 260, margin: "0 auto" }}>
-                    This is the same AI that handles booking, pricing, and client questions for our med spa partners.
+                  <div
+                    style={{
+                      color: "rgba(255,255,255,0.45)",
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      maxWidth: 260,
+                      margin: "0 auto",
+                    }}
+                  >
+                    This is the exact AI that handles booking, pricing, and client
+                    questions for LevoHQ med spa partners. Try it.
                   </div>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    width: "100%",
+                  }}
+                >
                   {SUGGESTED_MESSAGES.map((msg, i) => (
                     <button
                       key={i}
                       onClick={() => sendMessage(msg)}
                       style={{
-                        background: "rgba(99,102,241,0.08)",
-                        border: "1px solid rgba(99,102,241,0.2)",
+                        background: "rgba(212,168,83,0.08)",
+                        border: "1px solid rgba(212,168,83,0.22)",
                         borderRadius: 16,
                         padding: "10px 16px",
-                        color: "#a5b4fc",
+                        color: "#e0bc6a",
                         fontSize: 13,
                         cursor: "pointer",
                         textAlign: "left",
@@ -262,15 +354,15 @@ export default function LevoDemo() {
                       }}
                       onMouseOver={(e: MouseEvent<HTMLButtonElement>) => {
                         e.currentTarget.style.background =
-                          "rgba(99,102,241,0.15)";
+                          "rgba(212,168,83,0.16)";
                         e.currentTarget.style.borderColor =
-                          "rgba(99,102,241,0.4)";
+                          "rgba(212,168,83,0.45)";
                       }}
                       onMouseOut={(e: MouseEvent<HTMLButtonElement>) => {
                         e.currentTarget.style.background =
-                          "rgba(99,102,241,0.08)";
+                          "rgba(212,168,83,0.08)";
                         e.currentTarget.style.borderColor =
-                          "rgba(99,102,241,0.2)";
+                          "rgba(212,168,83,0.22)";
                       }}
                     >
                       {msg}
@@ -285,7 +377,8 @@ export default function LevoDemo() {
                 key={i}
                 style={{
                   display: "flex",
-                  justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                  justifyContent:
+                    msg.role === "user" ? "flex-end" : "flex-start",
                   animation: "fadeIn 0.3s ease",
                 }}
               >
@@ -293,15 +386,19 @@ export default function LevoDemo() {
                   style={{
                     maxWidth: "82%",
                     padding: "10px 14px",
-                    borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                    borderRadius:
+                      msg.role === "user"
+                        ? "18px 18px 4px 18px"
+                        : "18px 18px 18px 4px",
                     background:
                       msg.role === "user"
-                        ? "linear-gradient(135deg, #6366f1, #7c3aed)"
+                        ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`
                         : "rgba(255,255,255,0.08)",
-                    color: msg.role === "user" ? "#fff" : "rgba(255,255,255,0.88)",
+                    color: msg.role === "user" ? INK : "rgba(255,255,255,0.88)",
                     fontSize: 14,
                     lineHeight: 1.5,
                     letterSpacing: "-0.01em",
+                    fontWeight: msg.role === "user" ? 500 : 400,
                   }}
                 >
                   {msg.content}
@@ -380,9 +477,10 @@ export default function LevoDemo() {
                   width: 34,
                   height: 34,
                   borderRadius: 17,
-                  background: input.trim() && !loading
-                    ? "linear-gradient(135deg, #6366f1, #7c3aed)"
-                    : "rgba(255,255,255,0.08)",
+                  background:
+                    input.trim() && !loading
+                      ? `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`
+                      : "rgba(255,255,255,0.08)",
                   border: "none",
                   cursor: input.trim() && !loading ? "pointer" : "default",
                   display: "flex",
@@ -392,7 +490,16 @@ export default function LevoDemo() {
                   flexShrink: 0,
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={input.trim() && !loading ? INK : "white"}
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <line x1="22" y1="2" x2="11" y2="13" />
                   <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
@@ -402,23 +509,69 @@ export default function LevoDemo() {
         </div>
       </div>
 
-      {/* Branding */}
-      <div style={{ marginTop: 20, textAlign: "center" }}>
-        <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 12, letterSpacing: "0.05em" }}>
-          POWERED BY
-        </div>
+      {/* Conversion step — appears once the prospect has actually engaged.
+          Catches them at peak interest instead of dead-ending the demo. */}
+      {started ? (
         <div
           style={{
-            color: "#fff",
-            fontSize: 18,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            marginTop: 4,
+            marginTop: 24,
+            width: "100%",
+            maxWidth: 420,
+            borderRadius: 16,
+            border: "1px solid rgba(212,168,83,0.25)",
+            background: "rgba(212,168,83,0.04)",
+            padding: "20px",
+            animation: "fadeIn 0.4s ease",
           }}
         >
-          Levo<span style={{ color: "#6366f1" }}>HQ</span>
+          <p
+            style={{
+              color: "#F5F2E8",
+              fontSize: 15,
+              fontWeight: 600,
+              lineHeight: 1.4,
+              marginBottom: 4,
+            }}
+          >
+            That&apos;s what every one of your clients would get.
+          </p>
+          <p
+            style={{
+              color: "rgba(245,242,232,0.55)",
+              fontSize: 13,
+              lineHeight: 1.5,
+              marginBottom: 14,
+            }}
+          >
+            Booking, reminders, follow-ups, win-backs — automatic. Leave your
+            email and we&apos;ll set it up for your clinic.
+          </p>
+          <EmailCapture source="demo-interactive" buttonLabel="Get early access →" />
         </div>
-      </div>
+      ) : (
+        <div style={{ marginTop: 20, textAlign: "center" }}>
+          <div
+            style={{
+              color: "rgba(245,242,232,0.3)",
+              fontSize: 12,
+              letterSpacing: "0.05em",
+            }}
+          >
+            POWERED BY
+          </div>
+          <div
+            style={{
+              color: "#F5F2E8",
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              marginTop: 4,
+            }}
+          >
+            Levo<span style={{ color: GOLD }}>HQ</span>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes bounce {

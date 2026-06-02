@@ -12,16 +12,31 @@ import { computeAvailabilitySlots } from "@/lib/availabilitySlots";
  *   date    - "today", "tomorrow", "this_week", "next_week", or YYYY-MM-DD
  *   provider - provider name filter (optional)
  */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const businessId = searchParams.get("business");
   const serviceName = searchParams.get("service");
   const dateParam = searchParams.get("date") || "this_week";
   const providerName = searchParams.get("provider");
+
+  // This endpoint runs with a service-role client (bypasses RLS), so it MUST
+  // be scoped to a single clinic explicitly. Without a valid business id we
+  // refuse rather than leak or mix data across tenants.
+  if (!businessId || !UUID_RE.test(businessId)) {
+    return NextResponse.json(
+      { error: "A valid 'business' id is required." },
+      { status: 400 }
+    );
+  }
 
   try {
     const supabase = createSupabaseServiceRoleOrAnon();
 
     const result = await computeAvailabilitySlots(supabase, {
+      businessId,
       serviceName,
       dateParam,
       providerName,

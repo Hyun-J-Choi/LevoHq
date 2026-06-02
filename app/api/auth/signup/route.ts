@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+const PER_IP_SIGNUPS_PER_MINUTE = 5;
+
+function extractIp(req: NextRequest): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.headers.get("x-real-ip")?.trim() || "unknown";
+}
 
 export async function POST(req: NextRequest) {
+  // Abuse protection: this route creates auth users + businesses. Cap how fast
+  // a single source can spin them up. (In-memory — per Vercel instance; move to
+  // a shared store for a hard guarantee.)
+  if (!checkRateLimit(`signup:${extractIp(req)}`, PER_IP_SIGNUPS_PER_MINUTE)) {
+    return NextResponse.json(
+      { error: "Too many signups from this network. Try again in a minute." },
+      { status: 429 }
+    );
+  }
+
   const { email, password, businessName, ownerName } = await req.json();
 
   if (!email || !password || !businessName || !ownerName) {

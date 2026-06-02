@@ -58,6 +58,12 @@ export type ComputedAvailabilitySlot = {
 };
 
 export type ComputeAvailabilityOptions = {
+  /**
+   * REQUIRED tenant scope. Every query below is filtered by this so a caller
+   * can never read or mix another clinic's services, providers, schedule, or
+   * appointments. Callers that bypass RLS (service role) MUST pass this.
+   */
+  businessId: string;
   serviceName: string | null;
   dateParam?: string;
   providerName?: string | null;
@@ -92,10 +98,20 @@ export async function computeAvailabilitySlots(
   const dateParam = options.dateParam ?? "this_week";
   const providerName = options.providerName ?? null;
   const slotLimit = options.slotLimit ?? 10;
+  const businessId = options.businessId;
+
+  if (!businessId) {
+    return {
+      ok: false,
+      code: "missing_business",
+      message: "businessId is required.",
+    };
+  }
 
   let serviceQuery = supabase
     .from("services")
     .select("*")
+    .eq("business_id", businessId)
     .eq("is_active", true);
 
   if (options.serviceName) {
@@ -152,6 +168,7 @@ export async function computeAvailabilitySlots(
   const { data: providerRows, error: providersError } = await supabase
     .from("providers")
     .select("id, name, title")
+    .eq("business_id", businessId)
     .in("id", providerIds);
 
   if (providersError) {
@@ -247,6 +264,7 @@ export async function computeAvailabilitySlots(
   const { data: byScheduled, error: errScheduled } = await supabase
     .from("appointments")
     .select("id, service, scheduled_at, status")
+    .eq("business_id", businessId)
     .gte("scheduled_at", rs)
     .lte("scheduled_at", re)
     .not("status", "ilike", "%cancel%");
@@ -258,6 +276,7 @@ export async function computeAvailabilitySlots(
   const { data: byAppointmentTime, error: errApptTime } = await supabase
     .from("appointments")
     .select("id, service, appointment_time, status")
+    .eq("business_id", businessId)
     .gte("appointment_time", rs)
     .lte("appointment_time", re)
     .not("status", "ilike", "%cancel%");

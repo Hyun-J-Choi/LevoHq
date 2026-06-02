@@ -19,49 +19,46 @@ export default function SignupPage() {
     setError("");
     setLoading(true);
 
-    const supabase = createSupabaseBrowserClient();
+    try {
+      // 1. Create the user + business + owner link server-side. This route
+      // runs with the service role and derives identity safely — it replaces
+      // the old client-side signUp + anon `signup_create_business` RPC, which
+      // trusted a client-supplied user id and was callable by anyone.
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password, businessName, ownerName }),
+      });
 
-    // 1. Create auth user
-    const { data: authData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
 
-    if (signUpError || !authData.user) {
-      setError(signUpError?.message ?? "Failed to create account");
-      setLoading(false);
-      return;
-    }
+      if (!res.ok) {
+        setError(json.error ?? "Failed to create account");
+        setLoading(false);
+        return;
+      }
 
-    // 2. Create business + link via SECURITY DEFINER function (works even without session)
-    const { error: bizError } = await supabase.rpc("signup_create_business", {
-      p_user_id: authData.user.id,
-      p_name: businessName,
-      p_owner_name: ownerName,
-      p_email: email,
-    });
-
-    if (bizError) {
-      setError("Account created but business setup failed: " + bizError.message);
-      setLoading(false);
-      return;
-    }
-
-    // 3. If signUp didn't auto-sign-in (email confirmation), sign in now
-    if (!authData.session) {
+      // 2. Sign the new user in (the server route created the account but the
+      // browser has no session yet).
+      const supabase = createSupabaseBrowserClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (signInError) {
-        // Account + business exist, but login failed — send to login page
+        // Account + business exist, but login failed — send to login page.
         router.push("/login");
         return;
       }
-    }
 
-    router.push("/onboarding");
-    router.refresh();
+      router.push("/onboarding");
+      router.refresh();
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+    }
   }
 
   return (
