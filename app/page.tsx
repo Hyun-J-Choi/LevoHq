@@ -16,8 +16,8 @@ export default function HomePage() {
         aria-hidden
       />
 
-      {/* Nav */}
-      <header className="relative z-10 border-b border-white/[0.06]">
+      {/* Nav — sticky so it stays pinned to the top while scrolling */}
+      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#0A0A0A]/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5 md:px-8">
           <span className="text-[15px] font-semibold tracking-tight text-white">LevoHQ</span>
           <nav className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-[12px] font-medium text-neutral-400 sm:text-[13px] sm:gap-x-6">
